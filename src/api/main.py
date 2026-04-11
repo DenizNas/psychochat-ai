@@ -146,8 +146,9 @@ def read_root():
     return {"status": "ok", "message": "Psikochat-AI API Çalışıyor. /predict uç noktasını kullanın."}
 
 ## Auth Endpoints
-@app.post("/register")
+@app.post("/register", status_code=201)
 def register(user: AuthRequest):
+
     if not user.username or not user.password:
         raise HTTPException(status_code=400, detail="Kullanıcı adı ve şifre gereklidir.")
     if len(user.password.encode("utf-8")) > 72:
