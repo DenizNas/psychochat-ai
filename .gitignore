@@ -1,0 +1,76 @@
+# =========================
+# VIRTUAL ENV
+# =========================
+venv/
+env/
+.venv/
+
+# =========================
+# PYTHON CACHE
+# =========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# =========================
+# DATA (CRITICAL - AI DATASETS)
+# =========================
+data/raw/
+data/interim/
+*.csv
+
+# Eğer demo dataset istersen aşağıyı kaldırabilirsin:
+# data/processed/
+
+# =========================
+# MODEL FILES
+# =========================
+*.pt
+*.bin
+*.safetensors
+*.onnx
+
+# =========================
+# LOGS
+# =========================
+logs/
+*.log
+
+# =========================
+# ENV FILES
+# =========================
+.env
+.env.*
+
+# =========================
+# DATABASE
+# =========================
+*.db
+*.sqlite
+*.sqlite3
+
+# =========================
+# SYSTEM FILES
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# ANDROID (BUILD OUTPUTS)
+# =========================
+.gradle/
+build/
+*.apk
+*.aab
+
+# =========================
+# IDE
+# =========================
+.idea/
+.vscode/
+
+# =========================
+# JUPYTER / NOTEBOOKS CACHE
+# =========================
+.ipynb_checkpoints/

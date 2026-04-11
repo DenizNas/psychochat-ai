@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+python-dotenv
+pydantic
+torch
+transformers
+pandas
+scikit-learn
+tqdm
+bcrypt
+python-jose
+slowapi
+SQLAlchemy
+psycopg2-binary
+openai

@@ -1,0 +1,22 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.env
+node_modules/
+.git/
+.gitignore
+.vscode/
+.idea/
+.pytest_cache/
+tests/
+Dockerfile
+docker-compose.yml
+docker-compose.prod.yml
+# logs ve data gibi yerel kalması gereken klasörler (projeye göre ayarlayabilirsiniz)
+# data/
+# models/ (Bunu YORUMA ALIYORUZ çünkü prod imajında model dosyalarına ihtiyacımız var)

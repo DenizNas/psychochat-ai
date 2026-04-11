@@ -1,0 +1,52 @@
+--- data/emotion\emotion-labels-test.csv ---
+Columns: ['text', 'label']
+['You must be knowing #blithe means (adj.)  Happy, cheerful.', 'joy']
+["Old saying 'A #smile shared is one gained for another day' @YEGlifer @Scott_McKeen", 'joy']
+--- data/emotion\emotions.csv ---
+Columns: ['text', 'label']
+['i just feel really helpless and heavy hearted', '4']
+['ive enjoyed being able to slouch about relax and unwind and frankly needed it after those last few weeks around the end of uni and the expo i have lately started to find myself feeling a bit listless which is never really a good thing', '0']
+--- data/emotion\text.csv ---
+Columns: ['', 'text', 'label']
+['0', 'i just feel really helpless and heavy hearted', '4']
+['1', 'ive enjoyed being able to slouch about relax and unwind and frankly needed it after those last few weeks around the end of uni and the expo i have lately started to find myself feeling a bit listless which is never really a good thing', '0']
+--- data/crisis\augmented_data_revised_0_2000.csv ---
+Columns: ['id', 'keyword', 'location', 'text', 'target', 'augmented_text']
+['1', '', '', 'Our Deeds are the Reason of this  # earthquake May ALLAH Forgive us all', '1', 'Our actions are the reason for this #Esure.Allah can forgive us all.']
+['4', '', '', 'Forest fire near La Ronge Sask .  Canada', '1', 'Forest fire near La Runge SASK. Canada']
+--- data/crisis\augmented_data_revised_2001_4000.csv ---
+Columns: ['id', 'keyword', 'location', 'text', 'target', 'augmented_text']
+['2877', 'damage', 'Marysville, MI', "Let ' s say a tree falls on your fence .  Do you know how your homeowners insurance may help ?   ", '0', 'The tree falls to your fence. Do you know how home owner insurance will help?']
+['2878', 'damage', 'New Haven, Connecticut', ' @ JoeDawg42 TOR for a TOR situation only .  Wind damage enhanced wording is key IMO', '1', '@ JOEDAWG42 TOR TOR Situation Only.']
+--- data/crisis\augmented_data_revised_4001_end.csv ---
+Columns: ['id', 'keyword', 'location', 'text', 'target', 'augmented_text']
+['5684', 'floods', 'New York, NY', "Download  @  iTunes   ' Floods Of Glory '  by Luiz Santos  # jazz  # art  # Music", '0', "Luiz Santos # Jazz # Art # Music @ iTunes'Glory '"]
+['5685', 'floods', 'Timaru District, New Zealand', ' @ ContactEnergy Yep .  During floods of 1999 or 2000  -  Clyde Dam releasing every bit of water it could .  Most speccy !   EV charging your way ? ', '1', 'During the flood of @ Contactenergy Yep.1999 -Clyde Dam can release all water. Most speccy! EV is charging your way?']
+--- data/crisis\augmented_train_data_2001_4000.csv ---
+Columns: ['id', 'keyword', 'location', 'text', 'target', 'augmented_text']
+['2877', 'damage', 'Marysville, MI', "Let ' s say a tree falls on your fence .  Do you know how your homeowners insurance may help ?   ", '0', 'The tree falls to your fence. Do you know how home owner insurance will help?']
+['2878', 'damage', 'New Haven, Connecticut', ' @ JoeDawg42 TOR for a TOR situation only .  Wind damage enhanced wording is key IMO', '1', '@ JOEDAWG42 TOR TOR Situation Only.']
+--- data/crisis\data_prepared.csv ---
+Columns: ['id', 'keyword', 'location', 'text', 'target']
+['1', '', '', 'deed reason earthquake may allah forgive us', '1']
+['4', '', '', 'forest fire near la rong ask canada', '1']
+--- data/crisis\given_data_augmented.csv ---
+Columns: ['id', 'keyword', 'location', 'text', 'target']
+['1', '', '', 'Our actions are the reason for this #Esure.Allah can forgive us all.', '1']
+['4', '', '', 'Forest fire near La Runge SASK. Canada', '1']
+--- data/crisis\test_data_cleaning.csv ---
+Columns: ['id', 'keyword', 'location', 'text']
+['0', '', '', 'Just happened a terrible car crash']
+['2', '', '', 'Heard about  # earthquake is different cities, stay safe everyone . ']
+--- data/crisis\test_prepared.csv ---
+Columns: ['id', 'keyword', 'location', 'text']
+['0', '', '', 'happen terrible car crash']
+['2', '', '', 'heard earthquake differ city stay safe everyone']
+--- data/crisis\train_data_cleaning.csv ---
+Columns: ['id', 'keyword', 'location', 'text', 'target']
+['1', '', '', 'Our Deeds are the Reason of this  # earthquake May ALLAH Forgive us all', '1']
+['4', '', '', 'Forest fire near La Ronge Sask .  Canada', '1']
+--- data/crisis\tweets.csv ---
+Columns: ['\ufeffid', 'keyword', 'location', 'text', 'target']
+['0', 'ablaze', '', 'Communal violence in Bhainsa, Telangana. "Stones were pelted on Muslims\' houses and some houses and vehicles were set ablaze…', '1']
+['1', 'ablaze', '', 'Telangana: Section 144 has been imposed in Bhainsa from January 13 to 15, after clash erupted between two groups on January 12. Po…', '1']

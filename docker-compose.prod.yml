@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:13
+    container_name: psikochat_db_prod
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: prod_super_secure_password
+      POSTGRES_DB: psikochat
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+
+  backend:
+    build: .
+    container_name: psikochat_backend_prod
+    restart: always
+    depends_on:
+      - db
+    ports:
+      - "8000:8000"
+    volumes:
+      - prod_data:/app/data
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=production
+      - DATABASE_URL=postgresql://postgres:prod_super_secure_password@db:5432/psikochat
+    command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --workers 4
+
+volumes:
+  postgres_data_prod:
+  prod_data:

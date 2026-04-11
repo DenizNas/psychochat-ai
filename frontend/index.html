@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Psikochat-AI | Empatik Asistan</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Auth Modal Overlay -->
+    <div id="auth-modal" class="auth-modal">
+        <div class="auth-card">
+            <h2>Giriş Yap</h2>
+            <p>Sohbete devam etmek için kimliğini doğrula.</p>
+            <input type="text" id="auth-user" placeholder="Kullanıcı Adı" autocomplete="off"/>
+            <input type="password" id="auth-pass" placeholder="Şifre" autocomplete="off"/>
+            <div class="auth-error hidden" id="auth-error"></div>
+            <div class="auth-buttons">
+                <button class="btn-primary" id="btn-login">Giriş Yap</button>
+                <button class="btn-outline" id="btn-register">Kayıt Ol</button>
+            </div>
+            <p class="rate-note">Hesabınız yoksa Kayıt Ol butonuna basarak anında oluşturabilirsiniz.</p>
+        </div>
+    </div>
+
+    <div class="chat-container">
+        <header class="chat-header">
+            <div class="logo-area">
+                <h1>Psikochat-AI</h1>
+                <p class="subtitle">Seni dinlemek için buradayım.</p>
+            </div>
+            <div class="status-indicator">
+                <span class="pulse"></span> Online
+            </div>
+        </header>
+        
+        <div id="emergency-alert" class="emergency-alert hidden">
+            <strong>Acil Durum Bildirimi:</strong> <span id="emergency-text"></span>
+        </div>
+
+        <main id="chat-window" class="chat-window">
+            <div class="message system-message">
+                Merhaba! Ben sana destek olmak için tasarlanmış empatik bir yapay zekayım. Bugün nasıl hissediyorsun?
+                <div class="meta">Psikochat</div>
+            </div>
+        </main>
+
+        <footer class="chat-input-area">
+            <input type="text" id="user-input" placeholder="Düşüncelerini buraya yaz..." autocomplete="off"/>
+            <button id="send-btn" class="send-btn">
+                <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" class="css-i6dzq1"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+            </button>
+        </footer>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
