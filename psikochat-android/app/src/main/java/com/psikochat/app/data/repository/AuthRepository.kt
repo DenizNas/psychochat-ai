@@ -1,20 +1,21 @@
 package com.psikochat.app.data.repository
 import com.psikochat.app.data.api.PsikoApi
-import com.psikochat.app.data.model.AuthRequest
+import com.psikochat.app.data.model.LoginRequest
+import com.psikochat.app.data.model.RegisterRequest
 import com.psikochat.app.data.model.Resource
 
 class AuthRepository(private val api: PsikoApi) {
-    suspend fun login(user: String, pass: String): Resource<String> {
+    suspend fun login(email: String, pass: String): Resource<String> {
         return try {
-            val res = api.login(AuthRequest(user, pass))
+            val res = api.login(LoginRequest(email, pass))
             Resource.Success(res.access_token)
         } catch (e: Exception) {
             Resource.Error(e.message ?: "Bilinmeyen bir hata oluştu")
         }
     }
-    suspend fun register(user: String, pass: String): Resource<Boolean> {
+    suspend fun register(email: String, pass: String): Resource<Boolean> {
         return try {
-            api.register(AuthRequest(user, pass))
+            api.register(RegisterRequest(email, pass))
             Resource.Success(true)
         } catch (e: Exception) {
             Resource.Error(e.message ?: "Kayıt başarısız")

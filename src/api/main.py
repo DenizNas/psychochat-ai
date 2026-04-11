@@ -104,8 +104,12 @@ def verify_admin(credentials: HTTPBasicCredentials = Depends(security_basic)):
     return credentials.username
 
 ## Schemas
-class AuthRequest(BaseModel):
-    username: str
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+class RegisterRequest(BaseModel):
+    email: str
     password: str
 
 class ChatRequest(BaseModel):
@@ -147,28 +151,31 @@ def read_root():
 
 ## Auth Endpoints
 @app.post("/register", status_code=201)
-def register(user: AuthRequest):
-
-    if not user.username or not user.password:
-        raise HTTPException(status_code=400, detail="Kullanıcı adı ve şifre gereklidir.")
+def register(user: RegisterRequest):
+    if not user.email or not user.password:
+        raise HTTPException(status_code=400, detail="E-posta ve şifre gereklidir.")
+    
     if len(user.password.encode("utf-8")) > 72:
         raise HTTPException(status_code=400, detail="Şifre çok uzun (maksimum 72 byte olmalıdır).")
     
     hashed = get_password_hash(user.password)
     
     try:
-        success = create_user(user.username, hashed)
+        # API 'email' gönderir, DB 'username' kolonu kullanır
+        success = create_user(user.email, hashed)
         if not success:
             raise HTTPException(status_code=409, detail="Bu e-posta adresi zaten kayıtlı.")
+        
         return {"message": "Kayıt başarılı, giriş yapabilirsiniz."}
 
+    except HTTPException as he:
+        raise he
     except Exception as e:
-        import logging
-        logging.error(f"Register Exception: {e}")
+        logger.error(f"Register Exception: {e}")
         raise HTTPException(status_code=500, detail=f"Sunucu hatası oluştu: {str(e)}")
 
 @app.post("/login")
-def login(request: Request, user: AuthRequest):
+def login(request: Request, user: LoginRequest):
     client_ip = request.client.host if request.client else "unknown_ip"
     
     # Blokaj kontrolü
@@ -183,14 +190,16 @@ def login(request: Request, user: AuthRequest):
     def _handle_failure(reason: str):
         brute_force_protector.register_failure(client_ip)
         logger.warning(f"Failed login attempt | IP: {client_ip} | Reason: {reason}")
-        raise HTTPException(status_code=400, detail="Geçersiz kullanıcı veya şifre.")
+        raise HTTPException(status_code=400, detail="Geçersiz e-posta veya şifre.")
 
-    if not user.username or not user.password:
+    if not user.email or not user.password:
         _handle_failure("Missing fields")
+    
     if len(user.password.encode("utf-8")) > 72:
         _handle_failure("Password string limits exceeded")
 
-    db_user = get_user_by_username(user.username)
+    # API 'email' gönderir, DB 'username' kolonu kullanır
+    db_user = get_user_by_username(user.email)
     if not db_user:
         _handle_failure("User not found in DB")
     
@@ -201,8 +210,8 @@ def login(request: Request, user: AuthRequest):
     if brute_force_protector.register_success(client_ip):
         logger.info(f"Successful login for previously failing IP: {client_ip}")
         
-    token = create_access_token(data={"sub": user.username})
-    return {"access_token": token, "token_type": "bearer", "username": user.username}
+    token = create_access_token(data={"sub": user.email})
+    return {"access_token": token, "token_type": "bearer", "username": user.email}
 
 @app.post("/logout")
 def logout(credentials: HTTPAuthorizationCredentials = Depends(security_jwt), username: str = Depends(get_current_user)):
