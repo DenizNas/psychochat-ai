@@ -12,10 +12,10 @@ class AuthViewModel(private val repository: AuthRepository, private val tokenMan
     private val _authState = MutableStateFlow<Resource<Boolean>>(Resource.Success(false))
     val authState: StateFlow<Resource<Boolean>> = _authState
     
-    fun login(email: String, pass: String) {
+    fun login(username: String, pass: String) {
         viewModelScope.launch {
             _authState.value = Resource.Loading()
-            when (val res = repository.login(email, pass)) {
+            when (val res = repository.login(username, pass)) {
                 is Resource.Success -> {
                     res.data?.let { tokenManager.saveToken(it) }
                     _authState.value = Resource.Success(true)
@@ -26,11 +26,11 @@ class AuthViewModel(private val repository: AuthRepository, private val tokenMan
         }
     }
     
-    fun register(email: String, pass: String) {
+    fun register(username: String, pass: String) {
         viewModelScope.launch {
             _authState.value = Resource.Loading()
-            when (val res = repository.register(email, pass)) {
-                is Resource.Success -> login(email, pass) // Oto login
+            when (val res = repository.register(username, pass)) {
+                is Resource.Success -> login(username, pass) // Oto login
                 is Resource.Error -> _authState.value = Resource.Error(res.message ?: "Hata")
                 else -> {}
             }

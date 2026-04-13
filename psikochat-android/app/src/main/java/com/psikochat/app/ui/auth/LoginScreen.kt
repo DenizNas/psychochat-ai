@@ -28,7 +28,7 @@ fun LoginScreen(navController: NavController, tokenManager: TokenManager) {
     }
     val viewModel: AuthViewModel = viewModel(factory = factory)
     
-    var email by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     val authState by viewModel.authState.collectAsState()
     
@@ -58,8 +58,8 @@ fun LoginScreen(navController: NavController, tokenManager: TokenManager) {
         Spacer(modifier = Modifier.height(32.dp))
         
         OutlinedTextField(
-            value = email, onValueChange = { email = it },
-            label = { Text("E-posta") },
+            value = username, onValueChange = { username = it },
+            label = { Text("Kullanıcı Adı") },
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(8.dp))
@@ -75,7 +75,7 @@ fun LoginScreen(navController: NavController, tokenManager: TokenManager) {
             CircularProgressIndicator()
         } else {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Button(onClick = { viewModel.login(email, password) }, modifier = Modifier.weight(1f)) {
+                Button(onClick = { viewModel.login(username, password) }, modifier = Modifier.weight(1f)) {
                     Text("Giriş Yap")
                 }
                 Spacer(modifier = Modifier.width(8.dp))

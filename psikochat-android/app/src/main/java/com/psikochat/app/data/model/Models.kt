@@ -1,8 +1,8 @@
 package com.psikochat.app.data.model
 import com.google.gson.annotations.SerializedName
 
-data class LoginRequest(val email: String, val password: String)
-data class RegisterRequest(val email: String, val password: String)
+data class LoginRequest(val username: String, val password: String)
+data class RegisterRequest(val username: String, val password: String)
 data class AuthResponse(val access_token: String, val token_type: String, val username: String)
 data class RegisterResponse(val message: String)
 data class ChatRequest(val text: String, val language: String = "tr")

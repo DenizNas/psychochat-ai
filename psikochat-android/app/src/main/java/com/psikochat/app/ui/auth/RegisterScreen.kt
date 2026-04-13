@@ -27,7 +27,7 @@ fun RegisterScreen(navController: NavController, tokenManager: TokenManager) {
     }
     val viewModel: AuthViewModel = viewModel(factory = factory)
 
-    var email by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
     var validationError by remember { mutableStateOf<String?>(null) }
@@ -49,10 +49,10 @@ fun RegisterScreen(navController: NavController, tokenManager: TokenManager) {
         Spacer(modifier = Modifier.height(32.dp))
 
         OutlinedTextField(
-            value = email, onValueChange = { email = it; validationError = null },
-            label = { Text("E-posta") },
+            value = username, onValueChange = { username = it; validationError = null },
+            label = { Text("Kullanıcı Adı") },
             modifier = Modifier.fillMaxWidth(),
-            isError = validationError != null && email.isEmpty()
+            isError = validationError != null && username.isEmpty()
         )
         Spacer(modifier = Modifier.height(8.dp))
         
@@ -84,14 +84,14 @@ fun RegisterScreen(navController: NavController, tokenManager: TokenManager) {
         } else {
             Button(
                 onClick = {
-                    if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
-                        validationError = "Geçerli bir e-posta adresi girin."
+                    if (username.length < 3) {
+                        validationError = "Kullanıcı adı en az 3 karakter olmalıdır."
                     } else if (password.length < 6) {
                         validationError = "Şifre en az 6 karakter olmalıdır."
                     } else if (password != confirmPassword) {
                         validationError = "Şifreler eşleşmiyor."
                     } else {
-                        viewModel.register(email, password)
+                        viewModel.register(username, password)
                     }
                 },
                 modifier = Modifier.fillMaxWidth()

@@ -105,11 +105,11 @@ def verify_admin(credentials: HTTPBasicCredentials = Depends(security_basic)):
 
 ## Schemas
 class LoginRequest(BaseModel):
-    email: str
+    username: str
     password: str
 
 class RegisterRequest(BaseModel):
-    email: str
+    username: str
     password: str
 
 class ChatRequest(BaseModel):
@@ -152,8 +152,8 @@ def read_root():
 ## Auth Endpoints
 @app.post("/register", status_code=201)
 def register(user: RegisterRequest):
-    if not user.email or not user.password:
-        raise HTTPException(status_code=400, detail="E-posta ve şifre gereklidir.")
+    if not user.username or not user.password:
+        raise HTTPException(status_code=400, detail="Kullanıcı adı ve şifre gereklidir.")
     
     if len(user.password.encode("utf-8")) > 72:
         raise HTTPException(status_code=400, detail="Şifre çok uzun (maksimum 72 byte olmalıdır).")
@@ -161,10 +161,10 @@ def register(user: RegisterRequest):
     hashed = get_password_hash(user.password)
     
     try:
-        # API 'email' gönderir, DB 'username' kolonu kullanır
-        success = create_user(user.email, hashed)
+        # API ve DB artık 'username' bazlı çalışıyor
+        success = create_user(user.username, hashed)
         if not success:
-            raise HTTPException(status_code=409, detail="Bu e-posta adresi zaten kayıtlı.")
+            raise HTTPException(status_code=409, detail="Bu kullanıcı adı zaten alınmış.")
         
         return {"message": "Kayıt başarılı, giriş yapabilirsiniz."}
 
@@ -192,14 +192,14 @@ def login(request: Request, user: LoginRequest):
         logger.warning(f"Failed login attempt | IP: {client_ip} | Reason: {reason}")
         raise HTTPException(status_code=400, detail="Geçersiz e-posta veya şifre.")
 
-    if not user.email or not user.password:
+    if not user.username or not user.password:
         _handle_failure("Missing fields")
     
     if len(user.password.encode("utf-8")) > 72:
         _handle_failure("Password string limits exceeded")
 
-    # API 'email' gönderir, DB 'username' kolonu kullanır
-    db_user = get_user_by_username(user.email)
+    # API ve DB artık 'username' bazlı çalışıyor
+    db_user = get_user_by_username(user.username)
     if not db_user:
         _handle_failure("User not found in DB")
     
@@ -210,8 +210,8 @@ def login(request: Request, user: LoginRequest):
     if brute_force_protector.register_success(client_ip):
         logger.info(f"Successful login for previously failing IP: {client_ip}")
         
-    token = create_access_token(data={"sub": user.email})
-    return {"access_token": token, "token_type": "bearer", "username": user.email}
+    token = create_access_token(data={"sub": user.username})
+    return {"access_token": token, "token_type": "bearer", "username": user.username}
 
 @app.post("/logout")
 def logout(credentials: HTTPAuthorizationCredentials = Depends(security_jwt), username: str = Depends(get_current_user)):
