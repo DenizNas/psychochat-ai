@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -48,7 +49,7 @@ fun RegistrationScreen(navController: NavController, tokenManager: TokenManager)
     
     if (authState is Resource.Success && (authState.data == true)) {
         LaunchedEffect(Unit) {
-            navController.navigate("chat") { popUpTo("login") { inclusive = true } }
+            navController.navigate("login") { popUpTo("register") { inclusive = true } }
         }
     }
 
@@ -142,6 +143,7 @@ fun RegistrationScreen(navController: NavController, tokenManager: TokenManager)
                 value = email,
                 onValueChange = { email = it },
                 placeholder = { Text("E-posta Adresi", color = Color.Gray) },
+                textStyle = TextStyle(color = LoginTextColor),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
@@ -164,6 +166,7 @@ fun RegistrationScreen(navController: NavController, tokenManager: TokenManager)
                 value = password,
                 onValueChange = { password = it },
                 placeholder = { Text("Şifre", color = Color.Gray) },
+                textStyle = TextStyle(color = LoginTextColor),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
@@ -186,6 +189,7 @@ fun RegistrationScreen(navController: NavController, tokenManager: TokenManager)
                 value = confirmPassword,
                 onValueChange = { confirmPassword = it },
                 placeholder = { Text("Şifre Tekrar", color = Color.Gray) },
+                textStyle = TextStyle(color = LoginTextColor),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),

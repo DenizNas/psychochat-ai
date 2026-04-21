@@ -16,6 +16,7 @@ import com.psikochat.app.ui.auth.ForgotPasswordScreen
 import com.psikochat.app.ui.home.HomeScreen
 import com.psikochat.app.ui.home.ProfileScreen
 import com.psikochat.app.ui.home.SettingsScreen
+import com.psikochat.app.ui.home.TherapyScreen
 import com.psikochat.app.ui.chat.ChatScreen
 import com.psikochat.app.ui.theme.PsikochatTheme
 import com.psikochat.app.data.local.TokenManager
@@ -38,6 +39,7 @@ class MainActivity : ComponentActivity() {
                         composable("home") { HomeScreen(navController, tokenManager) }
                         composable("profile") { ProfileScreen(navController, tokenManager) }
                         composable("settings") { SettingsScreen(navController, tokenManager) }
+                        composable("therapy") { TherapyScreen(navController, tokenManager) }
                         composable("chat") { ChatScreen(navController, tokenManager) }
                     }
                 }

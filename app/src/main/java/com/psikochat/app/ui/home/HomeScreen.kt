@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -58,7 +59,7 @@ fun HomeScreen(navController: NavController, tokenManager: TokenManager) {
                             }
                         }
                     }) {
-                        Icon(Icons.Default.KeyboardArrowLeft, contentDescription = "Geri Dön", tint = LoginTextColor)
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Geri Dön", tint = LoginTextColor)
                     }
                 },
                 actions = {
@@ -87,7 +88,7 @@ fun HomeScreen(navController: NavController, tokenManager: TokenManager) {
                     icon = { Icon(Icons.Default.Share, contentDescription = null) },
                     label = { Text("Terapi", fontSize = 10.sp) },
                     selected = false,
-                    onClick = { }
+                    onClick = { navController.navigate("therapy") }
                 )
                 
                 Box(
@@ -188,7 +189,8 @@ fun HomeScreen(navController: NavController, tokenManager: TokenManager) {
                         SupportItem(
                             title = "Canlı Uzman\nGörüşmesi",
                             icon = Icons.Default.Call,
-                            progress = 0.6f
+                            progress = 0.6f,
+                            onClick = { navController.navigate("therapy") }
                         )
                         SupportItem(
                             title = "Duygu\nİzleyici",

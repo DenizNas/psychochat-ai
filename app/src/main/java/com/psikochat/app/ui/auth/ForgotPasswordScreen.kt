@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -173,6 +174,7 @@ fun ForgotPasswordScreen(navController: NavController) {
                         value = emailOrPhone,
                         onValueChange = { emailOrPhone = it },
                         placeholder = { Text("E-posta veya Telefon Numarası", color = Color.Gray, fontSize = 14.sp) },
+                        textStyle = TextStyle(color = LoginTextColor),
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
                         leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = Color.Gray) },
