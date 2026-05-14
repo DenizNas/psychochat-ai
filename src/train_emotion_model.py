@@ -4,7 +4,7 @@ from sklearn.model_selection import train_test_split
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trainer, TrainingArguments
 
 # 1️⃣ DATASET YÜKLE
-df = pd.read_csv("data/cleaned_emotions.csv")
+df = pd.read_csv("data/cleaned_emotions.csv", encoding="utf-8")
 
 # 2️⃣ TRAIN / TEST SPLIT
 train_texts, test_texts, train_labels, test_labels = train_test_split(

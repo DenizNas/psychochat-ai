@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, ORJSONResponse
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBasic, HTTPBasicCredentials, HTTPBearer, HTTPAuthorizationCredentials
@@ -20,6 +20,7 @@ from src.core.metrics import metrics_tracker
 from src.core.brute_force_protection import brute_force_protector
 from src.core.token_blacklist import token_blacklist_core
 from src.core.input_validator import input_validator_core
+from src.ai.preprocessing import prepare_model_input
 from src.core.logging_config import setup_logging
 import logging
 logger = logging.getLogger(__name__)
@@ -30,7 +31,8 @@ from fastapi.exceptions import RequestValidationError
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from src.inference.predict import EmotionCrisisPredictor
-from src.inference.response_generator import generate_response
+from src.response_engine.engine import response_engine
+from src.response_engine.models import EngineInput
 from src.services.logger import log_interaction
 from src.services.database import init_db, get_chat_history, get_analytics_summary, get_analytics_timeline
 from src.services.database import create_user, get_user_by_username
@@ -41,7 +43,8 @@ limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(
     title="Psikochat-AI API",
     description="Empatik ve Krize Duyarlı Yapay Zeka Destek Asistanı",
-    version="1.1.0"
+    version="1.1.0",
+    default_response_class=ORJSONResponse
 )
 
 app.state.limiter = limiter
@@ -138,9 +141,16 @@ def load_models():
     print("Loading AI Models... This might take a few seconds.")
     try:
         predictor = EmotionCrisisPredictor()
+        logger.info("Models loaded successfully from absolute paths.")
         print("Models loaded successfully.")
     except Exception as e:
-        print(f"Error loading models: {e}")
+        if os.getenv("APP_ENV", "development").lower() == "production":
+            logger.critical(f"FATAL STARTUP ERROR: Modeller yuklenemedi. Detay: {str(e)}")
+            print(f"FATAL STARTUP ERROR: Modeller yuklenemedi. Detay: {str(e)}")
+            sys.exit(1)
+        else:
+            logger.critical(f"STARTUP WARNING: Modeller yuklenemedi. Inference disabled. Detay: {str(e)}")
+            print(f"STARTUP WARNING: Modeller yuklenemedi. Inference disabled. Detay: {str(e)}")
 
 @app.get("/")
 def read_root():
@@ -236,6 +246,7 @@ async def predict(request: Request, body: ChatRequest, background_tasks: Backgro
     # 1. Validation & Sanitization Layer
     try:
         clean_text = input_validator_core.validate_and_sanitize(body.text, user_id=username)
+        clean_text = prepare_model_input(clean_text)
     except ValueError as ve:
         # Note: input_validator_core zaten gerekli loglamayı (WARNING/ERROR) yapıyor
         raise HTTPException(status_code=400, detail=str(ve))
@@ -247,10 +258,9 @@ async def predict(request: Request, body: ChatRequest, background_tasks: Backgro
     analysis = predictor.predict_both(user_text)
     
     if "error" in analysis.get("emotion", {}) or "error" in analysis.get("crisis_detection", {}):
-         emotion_label = analysis.get("emotion", {}).get("label", "unknown")
-         risk_label = analysis.get("crisis_detection", {}).get("label", "unknown")
-         if emotion_label == "unknown" or risk_label == "unknown":
-              raise HTTPException(status_code=503, detail="Local AI modelleri eğitilmemiş veya yüklenemedi.")
+         emotion_label = "neutral"
+         risk_label = "Normal"
+         logger.warning("Local AI models not loaded, falling back to default labels and GPT.")
     else:
          emotion_label = analysis["emotion"]["label"]
          risk_label = analysis["crisis_detection"]["label"]
@@ -259,13 +269,15 @@ async def predict(request: Request, body: ChatRequest, background_tasks: Backgro
     if str(risk_label).lower() in ["kriz", "1", "crisis"]:
         emergency_msg = "Lütfen acil yardıma ihtiyacınız varsa 112'yi veya 114 Psikolojik Destek Hattını arayın."
 
-    chatgpt_response = generate_response(
-        text=user_text, 
-        emotion=emotion_label, 
+    engine_input = EngineInput(
+        text=user_text,
+        emotion=emotion_label,
         risk=risk_label,
         user_id=username,
         language=body.language
     )
+    engine_output = response_engine.generate_response(engine_input)
+    chatgpt_response = engine_output.final_text
 
     latency = (time.time() - start_time) * 1000
 
@@ -292,8 +304,10 @@ def get_history(username: str = Depends(get_current_user)):
     formatted_history = []
     for item in raw_history:
         formatted_history.append({
+            "id": item.get("id"),
             "role": item["role"],
-            "text": item["content"]
+            "text": item["content"],
+            "timestamp": item.get("timestamp")
         })
     return formatted_history
 

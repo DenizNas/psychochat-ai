@@ -148,7 +148,7 @@ def get_chat_history(user_id: str, limit: int = None) -> List[Dict]:
         rows = query.all()
         # Sıralamayı yeniden eskiden yeniye çevirmek için reverse edilir
         rows.reverse()
-        return [{"role": r.role, "content": r.content} for r in rows]
+        return [{"id": r.id, "role": r.role, "content": r.content, "timestamp": r.timestamp.isoformat()} for r in rows]
     except Exception as e:
         print(f"Error fetching max history: {e}")
         return []

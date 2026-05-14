@@ -6,10 +6,10 @@ import retrofit2.http.POST
 
 interface PsikoApi {
     @POST("/login")
-    suspend fun login(@Body request: AuthRequest): AuthResponse
+    suspend fun login(@Body request: LoginRequest): AuthResponse
     
     @POST("/register")
-    suspend fun register(@Body request: AuthRequest): RegisterResponse
+    suspend fun register(@Body request: RegisterRequest): RegisterResponse
 
     @POST("/predict")
     suspend fun sendMessage(@Body request: ChatRequest): ChatResponse

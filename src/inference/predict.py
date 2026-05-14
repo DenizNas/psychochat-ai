@@ -3,10 +3,11 @@ import json
 import torch
 import warnings
 from transformers import BertTokenizer, BertForSequenceClassification
+from src.core.paths import EMOTION_MODEL_DIR_STR, CRISIS_MODEL_DIR_STR
 
 class EmotionCrisisPredictor:
     """Wrapper to run inference using both Emotion and Crisis models."""
-    def __init__(self, emotion_model_dir="models/emotion_model", crisis_model_dir="models/crisis_model"):
+    def __init__(self, emotion_model_dir=EMOTION_MODEL_DIR_STR, crisis_model_dir=CRISIS_MODEL_DIR_STR):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
         self.emotion_model = None
@@ -29,7 +30,9 @@ class EmotionCrisisPredictor:
 
     def _load_emotion_model(self, path):
         if not os.path.exists(path):
-             warnings.warn(f"Emotion model not found at {path}. Please train it first.")
+             if os.getenv("APP_ENV", "development").lower() == "production":
+                 raise FileNotFoundError(f"CRITICAL: Emotion model not found at absolute path: {path}")
+             print(f"WARNING: Emotion model not found at absolute path: {path}. Emotion inference disabled.")
              return
              
         self.emotion_tokenizer = BertTokenizer.from_pretrained(path)
@@ -40,7 +43,9 @@ class EmotionCrisisPredictor:
         
     def _load_crisis_model(self, path):
          if not os.path.exists(path):
-             warnings.warn(f"Crisis model not found at {path}. Please train it first.")
+             if os.getenv("APP_ENV", "development").lower() == "production":
+                 raise FileNotFoundError(f"CRITICAL: Crisis model not found at absolute path: {path}")
+             print(f"WARNING: Crisis model not found at absolute path: {path}. Crisis inference disabled.")
              return
              
          self.crisis_tokenizer = BertTokenizer.from_pretrained(path)

@@ -1,0 +1,14 @@
+{
+    "data_path": "data/processed/crisis_dataset_final.csv",
+    "epochs": 10,
+    "batch_size": 16,
+    "learning_rate": 2e-5,
+    "max_length": 128,
+    "model_name": "dbmdz/bert-base-turkish-cased",
+    "save_dir": "training/checkpoints/crisis",
+    "seed": 42,
+    "early_stopping_patience": 3,
+    "early_stopping_min_delta": 0.001,
+    "scheduler_patience": 2,
+    "scheduler_factor": 0.5
+}

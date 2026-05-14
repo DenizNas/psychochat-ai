@@ -148,8 +148,9 @@ fun SettingsScreen(navController: NavController, tokenManager: TokenManager) {
                             .clickable { 
                                 scope.launch {
                                     tokenManager.clearAuthData()
-                                    navController.navigate("login") {
-                                        popUpTo(0) { inclusive = true }
+                                    navController.navigate("auth_graph") {
+                                        popUpTo("main_graph") { inclusive = true }
+                                        launchSingleTop = true
                                     }
                                 }
                             }

@@ -17,7 +17,8 @@ class TokenManager(private val context: Context) {
     }
     
     fun getToken(): Flow<String?> = context.dataStore.data.map { it[TOKEN_KEY] }
-    fun getUsername(): Flow<String?> = context.dataStore.data.map { it[USERNAME_KEY] ?: "Kullanıcı" }
+    fun getUsername(): Flow<String> =
+    context.dataStore.data.map { it[USERNAME_KEY] ?: "Kullanıcı" }
     
     suspend fun saveAuthData(token: String, username: String) {
         context.dataStore.edit { preferences ->
@@ -33,6 +34,4 @@ class TokenManager(private val context: Context) {
         }
     }
     
-    suspend fun saveToken(token: String) { context.dataStore.edit { it[TOKEN_KEY] = token } }
-    suspend fun clearToken() { context.dataStore.edit { it.remove(TOKEN_KEY) } }
 }

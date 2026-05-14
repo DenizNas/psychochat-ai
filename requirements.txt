@@ -13,3 +13,5 @@ slowapi
 SQLAlchemy
 psycopg2-binary
 openai
+orjson
+seaborn

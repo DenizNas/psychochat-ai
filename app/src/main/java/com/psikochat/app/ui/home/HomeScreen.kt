@@ -54,8 +54,9 @@ fun HomeScreen(navController: NavController, tokenManager: TokenManager) {
                     IconButton(onClick = { 
                         scope.launch {
                             tokenManager.clearAuthData()
-                            navController.navigate("login") {
-                                popUpTo("home") { inclusive = true }
+                            navController.navigate("auth_graph") {
+                                popUpTo("main_graph") { inclusive = true }
+                                launchSingleTop = true
                             }
                         }
                     }) {
@@ -154,8 +155,9 @@ fun HomeScreen(navController: NavController, tokenManager: TokenManager) {
                     Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.fillMaxSize().padding(10.dp), tint = Color.White)
                 }
                 Spacer(modifier = Modifier.width(16.dp))
+                val displayUsername = if (username.isBlank() || username == "Kullanıcı") "Sana" else username
                 Text(
-                    text = "Merhaba, $username!",
+                    text = if (displayUsername == "Sana") "Hoş geldin!" else "Hoş geldin, $displayUsername!",
                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                     color = LoginTextColor
                 )

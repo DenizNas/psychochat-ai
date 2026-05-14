@@ -6,14 +6,14 @@ def create_datasets(input_path, output_dir):
     
     # Read data
     print("Reading dataset...")
-    df = pd.read_csv(input_path)
+    df = pd.read_csv(input_path, encoding="utf-8")
     
     # Emotion dataset
     # We will use 'text' and the integer 'label' from cleaned_emotions
     emotion_df = df[['text', 'label']].copy()
     
     emotion_out = os.path.join(output_dir, 'emotion_dataset.csv')
-    emotion_df.to_csv(emotion_out, index=False)
+    emotion_df.to_csv(emotion_out, index=False, encoding="utf-8")
     print(f"[{len(emotion_df)} rows] Saved emotion dataset to {emotion_out}")
     
     # Crisis dataset
@@ -33,7 +33,7 @@ def create_datasets(input_path, output_dir):
     crisis_df = df[['text', 'crisis_label']].rename(columns={'crisis_label': 'label'})
     
     crisis_out = os.path.join(output_dir, 'crisis_dataset.csv')
-    crisis_df.to_csv(crisis_out, index=False)
+    crisis_df.to_csv(crisis_out, index=False, encoding="utf-8")
     print(f"[{len(crisis_df)} rows] Saved crisis dataset to {crisis_out}")
     print(f"Found {crisis_df['label'].sum()} total crisis examples.")
 

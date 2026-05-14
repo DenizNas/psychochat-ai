@@ -70,7 +70,7 @@ def main():
     if not os.path.exists(args.data_path):
         raise FileNotFoundError(f"Dataset {args.data_path} could not be found.")
         
-    df = pd.read_csv(args.data_path)
+    df = pd.read_csv(args.data_path, encoding="utf-8")
     
     if "text" not in df.columns or "label" not in df.columns:
          raise ValueError("CSV must contain 'text' and 'label' columns.")

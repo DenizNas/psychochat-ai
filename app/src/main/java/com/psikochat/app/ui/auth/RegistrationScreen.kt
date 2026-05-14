@@ -42,13 +42,15 @@ fun RegistrationScreen(navController: NavController, tokenManager: TokenManager)
     }
     val viewModel: AuthViewModel = viewModel(factory = factory)
     
-    var email by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
+    var validationError by remember { mutableStateOf<String?>(null) }
     val authState by viewModel.authState.collectAsState()
     
     if (authState is Resource.Success && (authState.data == true)) {
         LaunchedEffect(Unit) {
+            viewModel.resetState()
             navController.navigate("login") { popUpTo("register") { inclusive = true } }
         }
     }
@@ -140,9 +142,9 @@ fun RegistrationScreen(navController: NavController, tokenManager: TokenManager)
             Spacer(modifier = Modifier.height(48.dp))
             
             TextField(
-                value = email,
-                onValueChange = { email = it },
-                placeholder = { Text("E-posta Adresi", color = Color.Gray) },
+                value = username,
+                onValueChange = { username = it },
+                placeholder = { Text("Kullanıcı Adı", color = Color.Gray) },
                 textStyle = TextStyle(color = LoginTextColor),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -156,7 +158,7 @@ fun RegistrationScreen(navController: NavController, tokenManager: TokenManager)
                     unfocusedIndicatorColor = Color.Transparent,
                     cursorColor = LoginTextColor
                 ),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                 singleLine = true
             )
             
@@ -208,21 +210,40 @@ fun RegistrationScreen(navController: NavController, tokenManager: TokenManager)
             
             Spacer(modifier = Modifier.height(24.dp))
             
+            val displayError = validationError ?: (if (authState is Resource.Error) (authState as Resource.Error).message else null)
+            if (displayError != null) {
+                Text(
+                    text = displayError,
+                    color = Color.Red,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(bottom = 16.dp).fillMaxWidth()
+                )
+            }
+            
             Button(
                 onClick = { 
-                    if (password == confirmPassword) {
-                        viewModel.register(email, password)
+                    validationError = null
+                    if (username.isBlank() || password.isBlank() || confirmPassword.isBlank()) {
+                        validationError = "Lütfen tüm alanları doldurunuz."
+                    } else if (password != confirmPassword) {
+                        validationError = "Şifreler birbiriyle eşleşmiyor."
+                    } else {
+                        viewModel.register(username, password)
                     }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
                 shape = RoundedCornerShape(28.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = LoginButton),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = LoginButton,
+                    disabledContainerColor = LoginButton.copy(alpha = 0.6f)
+                ),
                 enabled = authState !is Resource.Loading
             ) {
                 if (authState is Resource.Loading) {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
                 } else {
                     Text("KAYIT OL", color = Color.White, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                 }
@@ -244,19 +265,11 @@ fun RegistrationScreen(navController: NavController, tokenManager: TokenManager)
             
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(bottom = 16.dp)
+                modifier = Modifier.padding(bottom = 32.dp)
             ) {
                 Box(modifier = Modifier.size(8.dp).background(LoginButton, CircleShape))
                 Box(modifier = Modifier.size(8.dp).background(LoginButton.copy(alpha = 0.5f), CircleShape))
                 Box(modifier = Modifier.size(8.dp).background(LoginButton.copy(alpha = 0.5f), CircleShape))
-            }
-            
-            if (authState is Resource.Error) {
-                Text(
-                    text = authState.message ?: "Hata",
-                    color = Color.Red,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
             }
         }
     }

@@ -2,7 +2,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 
 # 1️⃣ VERİYİ OKU
-df = pd.read_csv("data/emotions.csv")
+df = pd.read_csv("data/emotions.csv", encoding="utf-8")
 
 print("İlk Veriler:")
 print(df.head())
@@ -58,7 +58,7 @@ train_texts, test_texts, train_labels, test_labels = train_test_split(
 )
 
 # 7️⃣ TEMİZ VERİYİ KAYDET
-df.to_csv("data/cleaned_emotions.csv", index=False)
+df.to_csv("data/cleaned_emotions.csv", index=False, encoding="utf-8")
 
 print("Temiz veri kaydedildi ✅")
 print(df["label"].value_counts())

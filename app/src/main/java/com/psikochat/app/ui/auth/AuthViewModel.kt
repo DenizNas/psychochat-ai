@@ -35,14 +35,14 @@ class AuthViewModel(private val repository: AuthRepository, private val tokenMan
     
     fun register(user: String, pass: String) {
         if (user.isBlank() || pass.isBlank()) {
-            _authState.value = Resource.Error("E-posta ve şifre boş bırakılamaz")
+            _authState.value = Resource.Error("Kullanıcı adı ve şifre boş bırakılamaz")
             return
         }
         
         viewModelScope.launch {
             _authState.value = Resource.Loading()
             when (val res = repository.register(user, pass)) {
-                is Resource.Success -> login(user, pass) // Oto login
+                is Resource.Success -> _authState.value = Resource.Success(true)
                 is Resource.Error -> _authState.value = Resource.Error(res.message ?: "Hata")
                 else -> {}
             }
@@ -51,5 +51,12 @@ class AuthViewModel(private val repository: AuthRepository, private val tokenMan
 
     fun resetState() {
         _authState.value = Resource.Success(false)
+    }
+
+    fun logout() {
+        viewModelScope.launch {
+            tokenManager.clearAuthData()
+            resetState()
+        }
     }
 }

@@ -47,8 +47,9 @@ fun ProfileScreen(navController: NavController, tokenManager: TokenManager) {
                     IconButton(onClick = { 
                         scope.launch {
                             tokenManager.clearAuthData()
-                            navController.navigate("login") {
-                                popUpTo("home") { inclusive = true }
+                            navController.navigate("auth_graph") {
+                                popUpTo("main_graph") { inclusive = true }
+                                launchSingleTop = true
                             }
                         }
                     }) {

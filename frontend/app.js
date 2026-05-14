@@ -176,7 +176,7 @@ async function sendMessage() {
         const response = await fetch(`${API_URL}/predict`, {
             method: "POST",
             headers: {
-                "Content-Type": "application/json",
+                "Content-Type": "application/json; charset=utf-8",
                 "Authorization": `Bearer ${userToken}`
             },
             body: JSON.stringify({

@@ -21,6 +21,11 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
     
     private val _crisisAlert = MutableStateFlow<String?>(null)
     val crisisAlert: StateFlow<String?> = _crisisAlert
+
+    private val _lastFailedMessage = MutableStateFlow<String?>(null)
+    val lastFailedMessage: StateFlow<String?> = _lastFailedMessage
+
+    private var lastSendTime = 0L
     
     fun loadHistory() {
         viewModelScope.launch {
@@ -28,9 +33,6 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
             when(val res = repository.getHistory()) {
                 is Resource.Success -> {
                     _messages.value = res.data ?: emptyList()
-                    if(_messages.value.isEmpty()) {
-                        _messages.value = listOf(HistoryItem("assistant", "Merhaba! Ben sana destek olmak için tasarlanmış empatik bir yapay zekayım. Bugün nasıl hissediyorsun?"))
-                    }
                 }
                 is Resource.Error -> _error.value = res.message
                 else -> {}
@@ -40,29 +42,58 @@ class ChatViewModel(private val repository: ChatRepository) : ViewModel() {
     }
 
     fun sendMessage(text: String) {
-        if (text.isBlank()) return
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return
+        if (trimmed.length > 1000) {
+            _error.value = "Mesaj çok uzun (maksimum 1000 karakter)"
+            return
+        }
+        if (_isLoading.value) return // Prevent duplicate requests while loading
         
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastSendTime < 1000) return // 1 second throttle against double taps
+        lastSendTime = currentTime
+        
+        _error.value = null
+        _lastFailedMessage.value = null
+
         viewModelScope.launch {
             val currentList = _messages.value.toMutableList()
-            currentList.add(HistoryItem("user", text))
+            currentList.add(HistoryItem(role = "user", text = trimmed))
             _messages.value = currentList
             _crisisAlert.value = null
             
             _isLoading.value = true
-            when(val res = repository.sendMessage(text)) {
+            when(val res = repository.sendMessage(trimmed)) {
                 is Resource.Success -> {
                     val updated = _messages.value.toMutableList()
-                    updated.add(HistoryItem("assistant", res.data?.response ?: ""))
+                    updated.add(HistoryItem(role = "assistant", text = res.data?.response ?: ""))
                     _messages.value = updated
                     
-                    if (res.data?.emergency_contact != null) {
-                        _crisisAlert.value = res.data.emergency_contact
+                    if (res.data?.emergencyContact != null) {
+                        _crisisAlert.value = res.data.emergencyContact
                     }
                 }
-                is Resource.Error -> _error.value = res.message
+                is Resource.Error -> {
+                    _error.value = res.message
+                    _lastFailedMessage.value = trimmed
+                    // Başarısız olan son kullanıcı mesajını listeden çıkar (tekrar gönderildiğinde çift gözükmesin)
+                    _messages.value = currentList.dropLast(1)
+                }
                 else -> {}
             }
             _isLoading.value = false
         }
+    }
+
+    fun retryLastMessage() {
+        val msg = _lastFailedMessage.value
+        if (!msg.isNullOrBlank()) {
+            sendMessage(msg)
+        }
+    }
+
+    fun clearError() {
+        _error.value = null
     }
 }

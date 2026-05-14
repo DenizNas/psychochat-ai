@@ -19,7 +19,7 @@ class TextClassificationDataset(Dataset):
         text = str(self.texts[idx])
         label = self.labels[idx]
 
-        encoding = self.tokenizer.encode_plus(
+        encoding = self.tokenizer(
             text,
             add_special_tokens=True,
             max_length=self.max_length,
@@ -43,7 +43,7 @@ def load_and_split_data(csv_path, text_col='text', label_col='label', test_size=
     Returns:
        (train_docs, train_labels), (val_docs, val_labels), (test_docs, test_labels), label_encoder
     """
-    df = pd.read_csv(csv_path)
+    df = pd.read_csv(csv_path, encoding="utf-8")
     # Drop rows missing text or label
     df = df.dropna(subset=[text_col, label_col])
     
