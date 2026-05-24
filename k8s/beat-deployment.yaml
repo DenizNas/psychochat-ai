@@ -1,0 +1,127 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: psychochat-beat
+  namespace: psychochat
+  labels:
+    app: psychochat-beat
+    app.kubernetes.io/name: psychochat-beat
+    app.kubernetes.io/component: scheduler
+    app.kubernetes.io/part-of: psychochat-platform
+spec:
+  # ── CRITICAL: Celery Beat MUST always run as exactly 1 replica ──────────────
+  # Running multiple Beat instances will cause duplicate scheduled task execution,
+  # leading to data corruption and double-processing of sensitive user data.
+  # Future improvement: use RedBeat (Redis-backed distributed Beat) for HA scheduling.
+  replicas: 1
+
+  # ── Recreate Strategy ────────────────────────────────────────────────────────
+  # Ensures the old pod is FULLY terminated before the new one starts.
+  # This prevents any overlap period where 2 Beat instances co-exist.
+  strategy:
+    type: Recreate
+
+  selector:
+    matchLabels:
+      app: psychochat-beat
+
+  template:
+    metadata:
+      labels:
+        app: psychochat-beat
+        app.kubernetes.io/name: psychochat-beat
+        app.kubernetes.io/component: scheduler
+        app.kubernetes.io/part-of: psychochat-platform
+
+    spec:
+      # ── Security Context (Pod Level) ────────────────────────────────────────
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+
+      # ── Graceful Termination ────────────────────────────────────────────────
+      # Beat has no in-flight tasks; 30s is sufficient to flush schedule state
+      terminationGracePeriodSeconds: 30
+
+      containers:
+        - name: beat
+          image: ghcr.io/deniznas/psychochat-ai:latest
+          imagePullPolicy: IfNotPresent
+
+          # Celery Beat scheduler command.
+          # --scheduler django_celery_beat.schedulers:DatabaseScheduler  (if using DB scheduler)
+          # Default uses in-memory scheduler with periodic tasks defined in celery config.
+          command:
+            - celery
+            - -A
+            - src.workers.celery_app
+            - beat
+            - --loglevel=info
+
+          # ── Security Context (Container Level) ───────────────────────────────
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+
+          # ── Environment Variables ────────────────────────────────────────────
+          envFrom:
+            - configMapRef:
+                name: psychochat-config
+            - secretRef:
+                name: psychochat-secrets
+
+          # ── Liveness Probe ───────────────────────────────────────────────────
+          # Beat process writes a heartbeat file; check if process is alive
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - "ps aux | grep 'celery.*beat' | grep -v grep"
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            timeoutSeconds: 10
+            failureThreshold: 3
+
+          # ── Resource Limits ──────────────────────────────────────────────────
+          # Beat is lightweight — it only schedules tasks, not execute them
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+
+          # ── Volume Mounts ────────────────────────────────────────────────────
+          volumeMounts:
+            - name: data-volume
+              mountPath: /app/data
+            - name: uploads-volume
+              mountPath: /app/uploads
+            - name: backups-volume
+              mountPath: /app/backups
+            - name: logs-volume
+              mountPath: /app/logs
+
+      # ── Volumes ──────────────────────────────────────────────────────────────
+      volumes:
+        - name: data-volume
+          persistentVolumeClaim:
+            claimName: psychochat-data-pvc
+        - name: uploads-volume
+          persistentVolumeClaim:
+            claimName: psychochat-uploads-pvc
+        - name: backups-volume
+          persistentVolumeClaim:
+            claimName: psychochat-backups-pvc
+        - name: logs-volume
+          emptyDir:
+            sizeLimit: 200Mi

@@ -1,0 +1,252 @@
+# =============================================================================
+# NetworkPolicy: PostgreSQL Isolation
+# =============================================================================
+# Restricts PostgreSQL access to ONLY backend and worker pods.
+# Beat scheduler also needs DB access (for scheduled task state).
+# All other pods and external traffic are denied.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-isolation
+  namespace: psychochat
+  labels:
+    app.kubernetes.io/name: postgres-isolation
+    app.kubernetes.io/part-of: psychochat-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: psychochat-postgres
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow PostgreSQL connections ONLY from backend, worker, and beat pods
+    - from:
+        - podSelector:
+            matchLabels:
+              app: psychochat-backend
+        - podSelector:
+            matchLabels:
+              app: psychochat-worker
+        - podSelector:
+            matchLabels:
+              app: psychochat-beat
+      ports:
+        - protocol: TCP
+          port: 5432
+  egress:
+    # Allow DNS resolution (kube-dns)
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# =============================================================================
+# NetworkPolicy: Redis Isolation
+# =============================================================================
+# Restricts Redis access to ONLY backend, worker, and beat pods.
+# Beat needs Redis as Celery broker for task dispatch.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-isolation
+  namespace: psychochat
+  labels:
+    app.kubernetes.io/name: redis-isolation
+    app.kubernetes.io/part-of: psychochat-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: psychochat-redis
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow Redis connections ONLY from backend, worker, and beat pods
+    - from:
+        - podSelector:
+            matchLabels:
+              app: psychochat-backend
+        - podSelector:
+            matchLabels:
+              app: psychochat-worker
+        - podSelector:
+            matchLabels:
+              app: psychochat-beat
+      ports:
+        - protocol: TCP
+          port: 6379
+  egress:
+    # Allow DNS resolution (kube-dns)
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# =============================================================================
+# NetworkPolicy: Backend Ingress Isolation
+# =============================================================================
+# Backend receives traffic ONLY from:
+#   1. The Nginx Ingress Controller (public API traffic)
+#   2. Prometheus (internal metrics scraping)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-ingress-isolation
+  namespace: psychochat
+  labels:
+    app.kubernetes.io/name: backend-ingress-isolation
+    app.kubernetes.io/part-of: psychochat-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: psychochat-backend
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow traffic from Nginx Ingress Controller namespace
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8001
+    # Allow Prometheus scraping from monitoring namespace (Prometheus Operator)
+    # Adjust namespace label if using different Prometheus deployment
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 8001
+    # Allow Prometheus scraping from same namespace (standalone Prometheus)
+    - from:
+        - podSelector:
+            matchLabels:
+              app: prometheus
+      ports:
+        - protocol: TCP
+          port: 8001
+  egress:
+    # Allow outbound to PostgreSQL
+    - to:
+        - podSelector:
+            matchLabels:
+              app: psychochat-postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    # Allow outbound to Redis
+    - to:
+        - podSelector:
+            matchLabels:
+              app: psychochat-redis
+      ports:
+        - protocol: TCP
+          port: 6379
+    # Allow outbound to OpenAI API (external HTTPS)
+    - ports:
+        - protocol: TCP
+          port: 443
+    # Allow DNS resolution (kube-dns)
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# =============================================================================
+# NetworkPolicy: Worker Egress
+# =============================================================================
+# Worker pods need the same database access as backend plus external HTTPS for AI APIs.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: worker-egress-policy
+  namespace: psychochat
+  labels:
+    app.kubernetes.io/name: worker-egress-policy
+    app.kubernetes.io/part-of: psychochat-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: psychochat-worker
+  policyTypes:
+    - Egress
+  egress:
+    # Allow outbound to PostgreSQL
+    - to:
+        - podSelector:
+            matchLabels:
+              app: psychochat-postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    # Allow outbound to Redis (Celery broker)
+    - to:
+        - podSelector:
+            matchLabels:
+              app: psychochat-redis
+      ports:
+        - protocol: TCP
+          port: 6379
+    # Allow outbound HTTPS (OpenAI, external APIs called from tasks)
+    - ports:
+        - protocol: TCP
+          port: 443
+    # Allow DNS resolution
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# =============================================================================
+# NetworkPolicy: Beat Egress
+# =============================================================================
+# Beat scheduler only needs Redis (broker) and Postgres (scheduler state) access.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: beat-egress-policy
+  namespace: psychochat
+  labels:
+    app.kubernetes.io/name: beat-egress-policy
+    app.kubernetes.io/part-of: psychochat-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: psychochat-beat
+  policyTypes:
+    - Egress
+  egress:
+    # Allow outbound to Redis (Celery task dispatch)
+    - to:
+        - podSelector:
+            matchLabels:
+              app: psychochat-redis
+      ports:
+        - protocol: TCP
+          port: 6379
+    # Allow outbound to PostgreSQL (if using DatabaseScheduler)
+    - to:
+        - podSelector:
+            matchLabels:
+              app: psychochat-postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    # Allow DNS resolution
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

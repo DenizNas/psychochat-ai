@@ -26,7 +26,9 @@ load_models()
     with open("tmp_fail_test.py", "w") as f:
         f.write(test_script)
         
-    result = subprocess.run([sys.executable, "tmp_fail_test.py"], capture_output=True, text=True)
+    env = os.environ.copy()
+    env["APP_ENV"] = "production"
+    result = subprocess.run([sys.executable, "tmp_fail_test.py"], env=env, capture_output=True, text=True)
     
     print("STDOUT:")
     print(result.stdout)

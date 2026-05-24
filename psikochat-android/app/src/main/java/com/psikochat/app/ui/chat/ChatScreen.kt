@@ -54,6 +54,18 @@ fun ChatScreen(navController: NavController, tokenManager: TokenManager) {
                 title = { Text("Psikochat-AI") },
                 actions = {
                     TextButton(onClick = {
+                        navController.navigate("insights")
+                    }) {
+                        Text("İçgörüler", color = AccentPrimary)
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    TextButton(onClick = {
+                        navController.navigate("wellness_report")
+                    }) {
+                        Text("Raporlar", color = AccentPrimary)
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    TextButton(onClick = {
                         scope.launch {
                             tokenManager.clearToken()
                             navController.navigate("login") { popUpTo("chat") { inclusive = true } }

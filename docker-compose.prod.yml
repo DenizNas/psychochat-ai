@@ -2,35 +2,121 @@ version: '3.8'
 
 services:
   db:
-    image: postgres:13
+    image: postgres:15-alpine
     container_name: psikochat_db_prod
-    restart: always
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: prod_super_secure_password
       POSTGRES_DB: psikochat
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: psikochat_user
+      POSTGRES_PASSWORD: strong_password # Dynamically mapped or set securely at runtime
     volumes:
-      - postgres_data_prod:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U psikochat_user -d psikochat"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    # Ports section is intentionally omitted to prevent exposing PostgreSQL to the external network!
+
+  redis:
+    image: redis:7-alpine
+    container_name: psikochat_redis_prod
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    # Ports are intentionally omitted so Redis is completely isolated from the outside world!
 
   backend:
     build: .
     container_name: psikochat_backend_prod
-    restart: always
+    restart: unless-stopped
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
-      - "8000:8000"
+      - "8001:8001"
     volumes:
-      - prod_data:/app/data
+      - ./data:/app/data
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+      - ./backups:/app/backups
     env_file:
-      - .env
+      - .env.production
     environment:
-      - ENVIRONMENT=production
-      - DATABASE_URL=postgresql://postgres:prod_super_secure_password@db:5432/psikochat
-    command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --workers 4
+      - APP_ENV=production
+      - DATABASE_URL=postgresql://psikochat_user:strong_password@db:5432/psikochat
+      - REDIS_URL=redis://redis:6379/0
+    command: uvicorn src.api.main:app --host 0.0.0.0 --port 8001
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health')\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  worker:
+    build: .
+    container_name: psikochat_worker_prod
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+      - ./backups:/app/backups
+    env_file:
+      - .env.production
+    environment:
+      - APP_ENV=production
+      - DATABASE_URL=postgresql://psikochat_user:strong_password@db:5432/psikochat
+      - REDIS_URL=redis://redis:6379/0
+    command: celery -A src.workers.celery_app worker --loglevel=info
+
+  beat:
+    build: .
+    container_name: psikochat_beat_prod
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+      - ./backups:/app/backups
+    env_file:
+      - .env.production
+    environment:
+      - APP_ENV=production
+      - DATABASE_URL=postgresql://psikochat_user:strong_password@db:5432/psikochat
+      - REDIS_URL=redis://redis:6379/0
+    command: celery -A src.workers.celery_app beat --loglevel=info
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: psikochat_prometheus_prod
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "9090:9090" # NOTE: Exposed only for local/dev smoke tests. In production, this port must be protected by a firewall or reverse proxy!
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
 
 volumes:
-  postgres_data_prod:
-  prod_data:
+  postgres_data:
+  redis_data:

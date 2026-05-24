@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  # Service name MUST be "postgres" — it matches the hostname in DATABASE_URL:
+  # DATABASE_URL=postgresql://psikochat_user:<pass>@postgres:5432/psikochat
+  # StatefulSet pods are also reachable via stable DNS:
+  #   postgres-0.postgres.psychochat.svc.cluster.local
+  namespace: psychochat
+  labels:
+    app: psychochat-postgres
+    app.kubernetes.io/name: postgres-svc
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: psychochat-platform
+spec:
+  # ClusterIP: PostgreSQL is never exposed externally.
+  # NetworkPolicy (network-policy.yaml) restricts access to backend/worker pods only.
+  type: ClusterIP
+
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP
+      name: postgres
+
+  selector:
+    app: psychochat-postgres

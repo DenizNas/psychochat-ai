@@ -1,7 +1,7 @@
 from fastapi import Request, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 logger = logging.getLogger(__name__)
@@ -26,7 +26,7 @@ async def custom_http_exception_handler(request: Request, exc: HTTPException):
             "status": "error",
             "message": str(exc.detail),
             "error_code": error_code,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "path": path
         }
     )
@@ -45,7 +45,24 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "status": "error",
             "message": "Geçersiz veya eksik veri gönderildi.",
             "error_code": "VALIDATION_ERROR",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "path": path
+        }
+    )
+
+import json
+
+async def json_decode_exception_handler(request: Request, exc: json.JSONDecodeError):
+    session_id = request.headers.get("X-Session-ID", "none")
+    path = request.url.path
+    logger.warning(f"JSONDecodeError on {path} | SessionID: {session_id} | Error: {str(exc)}")
+    return JSONResponse(
+        status_code=400,
+        content={
+            "status": "error",
+            "message": "Geçersiz JSON biçimi.",
+            "error_code": "INVALID_JSON",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "path": path
         }
     )
@@ -64,7 +81,7 @@ async def global_exception_handler(request: Request, exc: Exception):
             "status": "error",
             "message": "Beklenmeyen bir sunucu hatası oluştu.",
             "error_code": "INTERNAL_SERVER_ERROR",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "path": path
         }
     )

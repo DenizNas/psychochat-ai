@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: psychochat-backend-svc
+  namespace: psychochat
+  labels:
+    app: psychochat-backend
+    app.kubernetes.io/name: psychochat-backend-svc
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: psychochat-platform
+  annotations:
+    # Prometheus can also discover services via these annotations (ServiceMonitor alternative)
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8001"
+    prometheus.io/path: "/metrics"
+spec:
+  # ClusterIP: Internal-only service. External traffic enters via Ingress only.
+  type: ClusterIP
+
+  # Session affinity for WebSocket connections:
+  # With Redis Pub/Sub, sticky sessions are NOT strictly required.
+  # Any backend pod can handle messages via shared Redis channel.
+  # Set to "ClientIP" only if you experience WebSocket reconnection storms.
+  sessionAffinity: None
+
+  ports:
+    - port: 8001
+      targetPort: 8001
+      protocol: TCP
+      name: http
+
+  selector:
+    app: psychochat-backend

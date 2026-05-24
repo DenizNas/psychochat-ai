@@ -1,0 +1,84 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: psychochat-data-pvc
+  namespace: psychochat
+  labels:
+    app.kubernetes.io/name: psychochat-data-pvc
+    app.kubernetes.io/component: storage
+    app.kubernetes.io/part-of: psychochat-platform
+  annotations:
+    # Purpose: Stores application-generated ML model cache, session data files, temp processing
+    storage.psychochat.io/purpose: "application-data"
+    storage.psychochat.io/backup-required: "false"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  # Uncomment to request a specific storage class (e.g. fast SSD):
+  # storageClassName: "fast-ssd"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: psychochat-uploads-pvc
+  namespace: psychochat
+  labels:
+    app.kubernetes.io/name: psychochat-uploads-pvc
+    app.kubernetes.io/component: storage
+    app.kubernetes.io/part-of: psychochat-platform
+  annotations:
+    # Purpose: Stores user-uploaded files (profile photos etc.)
+    storage.psychochat.io/purpose: "user-uploads"
+    storage.psychochat.io/backup-required: "true"
+    # ──────────────────────────────────────────────────────────────────────────
+    # IMPORTANT: ReadWriteOnce (RWO) limitation in multi-node clusters
+    # ──────────────────────────────────────────────────────────────────────────
+    # RWO PVCs can only be mounted on ONE node at a time.
+    # When HPA scales backend to multiple pods on DIFFERENT nodes, they CANNOT
+    # all access this PVC simultaneously → uploads become unavailable.
+    #
+    # Production Solutions (choose one):
+    #   Option A — Object Storage (Recommended):
+    #     Stream uploads directly to AWS S3 or Google Cloud Storage.
+    #     No PVC needed. Infinitely scalable, globally available.
+    #
+    #   Option B — ReadWriteMany Network Storage:
+    #     Change accessModes to [ReadWriteMany] and use:
+    #     - AWS EFS (Elastic File System) with EFS CSI driver
+    #     - Google Cloud Filestore with nfs-client-provisioner
+    #     - Azure Files
+    #
+    #   Option C — Single-node (Local/Staging Only):
+    #     Keep RWO and ensure pods are scheduled on same node via nodeSelector.
+    # ──────────────────────────────────────────────────────────────────────────
+spec:
+  accessModes:
+    - ReadWriteOnce  # CHANGE to ReadWriteMany in multi-node production (see annotation above)
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: psychochat-backups-pvc
+  namespace: psychochat
+  labels:
+    app.kubernetes.io/name: psychochat-backups-pvc
+    app.kubernetes.io/component: storage
+    app.kubernetes.io/part-of: psychochat-platform
+  annotations:
+    # Purpose: Stores automated database backup files created by Celery backup tasks
+    storage.psychochat.io/purpose: "database-backups"
+    storage.psychochat.io/backup-required: "true"
+    # Production recommendation: Replace with S3/GCS bucket for offsite backup storage.
+    # The existing backup scripts in /scripts/ can be configured to push to S3 via AWS CLI.
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi

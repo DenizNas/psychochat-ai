@@ -1,5 +1,6 @@
 package com.psikochat.app.data.api
 import com.psikochat.app.data.local.TokenManager
+import com.psikochat.app.BuildConfig
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -7,10 +8,16 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
-    private const val BASE_URL = "http://10.0.2.2:8000" // For Android Emulator
+    val BASE_URL = BuildConfig.BASE_URL
     
     fun create(tokenManager: TokenManager): PsikoApi {
-        val logging = HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BODY }
+        val logging = HttpLoggingInterceptor().apply {
+            level = if (BuildConfig.DEBUG) {
+                HttpLoggingInterceptor.Level.BODY
+            } else {
+                HttpLoggingInterceptor.Level.NONE
+            }
+        }
         val authInterceptor = AuthInterceptor(tokenManager)
         
         val client = OkHttpClient.Builder()

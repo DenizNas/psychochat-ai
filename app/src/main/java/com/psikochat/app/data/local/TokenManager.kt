@@ -32,6 +32,11 @@ class TokenManager(private val context: Context) {
             preferences.remove(TOKEN_KEY)
             preferences.remove(USERNAME_KEY)
         }
+        try {
+            AppDatabase.getInstance(context).clearAllTables()
+        } catch (e: Exception) {
+            // Shield exceptions
+        }
     }
     
 }

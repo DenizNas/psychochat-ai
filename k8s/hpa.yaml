@@ -1,0 +1,98 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: psychochat-backend-hpa
+  namespace: psychochat
+  labels:
+    app: psychochat-backend
+    app.kubernetes.io/name: psychochat-backend-hpa
+    app.kubernetes.io/component: autoscaler
+    app.kubernetes.io/part-of: psychochat-platform
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: psychochat-backend
+
+  # ── Replica Bounds ────────────────────────────────────────────────────────────
+  minReplicas: 2  # Always maintain HA with at least 2 pods
+  maxReplicas: 6  # Cap prevents cost explosion; raise for very high load scenarios
+
+  # ── Scaling Metrics ───────────────────────────────────────────────────────────
+  metrics:
+    # Primary: CPU utilization
+    # Scales up when average CPU across all pods exceeds 70% of their requests.
+    # At 250m request, scale triggers at ~175m CPU consumed per pod.
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+
+    # Secondary: Memory utilization
+    # Scales up when average memory exceeds 80% of the 512Mi request.
+    # Helps during AI model loading spikes (~400MB threshold).
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+  # ── Scaling Behavior ──────────────────────────────────────────────────────────
+  behavior:
+    # Scale UP: Respond quickly to traffic spikes
+    scaleUp:
+      stabilizationWindowSeconds: 30  # Wait 30s before acting on sustained high load
+      policies:
+        - type: Pods
+          value: 2                    # Add at most 2 pods per scaling event
+          periodSeconds: 60
+
+    # Scale DOWN: Be conservative — avoid premature scale-down
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Wait 5 minutes of sustained low load before shrinking
+      policies:
+        - type: Pods
+          value: 1                     # Remove at most 1 pod per 60s during scale-down
+          periodSeconds: 60
+
+---
+# ── Optional: Worker HPA ──────────────────────────────────────────────────────────
+# Celery workers can scale based on CPU load from AI processing tasks.
+# For queue-depth-based scaling, consider KEDA (Kubernetes Event-Driven Autoscaling).
+# KEDA Redis queue length scaler: https://keda.sh/docs/scalers/redis-lists/
+#
+# Uncomment to enable worker autoscaling:
+#
+# apiVersion: autoscaling/v2
+# kind: HorizontalPodAutoscaler
+# metadata:
+#   name: psychochat-worker-hpa
+#   namespace: psychochat
+#   labels:
+#     app: psychochat-worker
+#     app.kubernetes.io/name: psychochat-worker-hpa
+#     app.kubernetes.io/part-of: psychochat-platform
+# spec:
+#   scaleTargetRef:
+#     apiVersion: apps/v1
+#     kind: Deployment
+#     name: psychochat-worker
+#   minReplicas: 2
+#   maxReplicas: 8
+#   metrics:
+#     - type: Resource
+#       resource:
+#         name: cpu
+#         target:
+#           type: Utilization
+#           averageUtilization: 75
+#   behavior:
+#     scaleDown:
+#       stabilizationWindowSeconds: 300
+#       policies:
+#         - type: Pods
+#           value: 1
+#           periodSeconds: 60

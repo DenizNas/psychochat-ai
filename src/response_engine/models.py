@@ -13,6 +13,13 @@ class EngineConfig(BaseModel):
     max_tokens: int = Field(default=250, description="Maximum tokens for generation")
     max_retries: int = Field(default=1, description="Max quality-based retries (non-crisis only; keeps GPT cost bounded)")
 
+class UserPreferences(BaseModel):
+    """User personalization settings"""
+    response_style: str = Field(default="supportive")
+    preferred_language: str = Field(default="tr")
+    privacy_mode: bool = Field(default=False)
+    answer_length_preference: str = Field(default="medium")
+
 class EngineInput(BaseModel):
     """Input payload for the Response Engine"""
     text: str = Field(..., description="User input text")
@@ -20,6 +27,7 @@ class EngineInput(BaseModel):
     risk: str = Field(..., description="Detected crisis risk label")
     user_id: str = Field(default="default", description="User identifier")
     language: str = Field(default="tr", description="Language for response")
+    preferences: UserPreferences = Field(default_factory=UserPreferences)
 
 class EngineOutput(BaseModel):
     """Output payload from the Response Engine"""

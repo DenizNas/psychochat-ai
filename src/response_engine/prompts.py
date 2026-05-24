@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 # Version
 # ---------------------------------------------------------------------------
 
-PROMPT_VERSION: str = "v1.0.0"
+PROMPT_VERSION: str = "v1.1.0"
 
 # ---------------------------------------------------------------------------
 # Internal constants
@@ -202,6 +202,33 @@ def get_emotion_instructions(emotion: str) -> str:
 
     return strategies.get(canonical, strategies["neutral"])
 
+    
+
+def get_preference_instructions(
+    response_style: str = "supportive", 
+    answer_length: str = "medium"
+) -> str:
+    """
+    User-specific behavioral preferences. 
+    Overrides base tone but still strictly obeys safety rules.
+    """
+    style_instr = {
+        "supportive": "Yanıtın nazik, teşvik edici ve umut verici olsun.",
+        "direct": "Yanıtın net, pratik ve dolambaçsız olsun. Gereksiz teselli ifadelerinden kaçın.",
+        "empathetic": "Kullanıcının duygularına derinlemesine odaklan, onları güçlü bir şekilde onayla (validation) ve yüksek duygusal rezonans göster."
+    }
+    
+    length_instr = {
+        "short": "Yanıtını çok kısa tut (maksimum 1-2 cümle).",
+        "medium": "Yanıtın orta uzunlukta olsun (3-5 cümle).",
+        "detailed": "Yanıtın detaylı, açıklayıcı ve kapsamlı olsun."
+    }
+    
+    style = style_instr.get(response_style, style_instr["supportive"])
+    length = length_instr.get(answer_length, length_instr["medium"])
+    
+    return f"KULLANICI TERCİHLERİ: {style} {length}"
+
 
 def get_memory_instructions(memory_context: str) -> str:
     """
@@ -241,6 +268,7 @@ def build_system_prompt(
     emotion: str = "neutral",
     risk: str = "Normal",
     memory_context: str = "",
+    preferences: Optional[dict] = None,
 ) -> tuple[str, dict]:
     """
     Assembles the final system prompt from modular sections.
@@ -278,6 +306,15 @@ def build_system_prompt(
         parts.append(get_crisis_instructions())
         sections_used.append("crisis")
     else:
+        # Preferences (Only inject when not crisis)
+        if preferences:
+            pref_instr = get_preference_instructions(
+                response_style=preferences.get("response_style", "supportive"),
+                answer_length=preferences.get("answer_length_preference", "medium")
+            )
+            parts.append(pref_instr)
+            sections_used.append("preferences")
+
         parts.append(get_emotion_instructions(emotion))
         sections_used.append(f"emotion:{_normalize_emotion(emotion)}")
 

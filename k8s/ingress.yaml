@@ -1,0 +1,122 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: psychochat-ingress
+  namespace: psychochat
+  labels:
+    app.kubernetes.io/name: psychochat-ingress
+    app.kubernetes.io/part-of: psychochat-platform
+  annotations:
+    # ── Ingress Controller ────────────────────────────────────────────────────
+    kubernetes.io/ingress.class: "nginx"
+
+    # ── TLS Certificate Management ────────────────────────────────────────────
+    # cert-manager automatically provisions and renews Let's Encrypt TLS certificates.
+    # Prerequisites: cert-manager must be installed in the cluster.
+    #   kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
+    # Then create a ClusterIssuer:
+    #   kubectl apply -f - <<EOF
+    #   apiVersion: cert-manager.io/v1
+    #   kind: ClusterIssuer
+    #   metadata:
+    #     name: letsencrypt-prod
+    #   spec:
+    #     acme:
+    #       server: https://acme-v02.api.letsencrypt.org/directory
+    #       email: admin@psikochat.com
+    #       privateKeySecretRef:
+    #         name: letsencrypt-prod
+    #       solvers:
+    #       - http01:
+    #           ingress:
+    #             class: nginx
+    #   EOF
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+
+    # ── WebSocket & Long-Lived Connection Support ─────────────────────────────
+    # WebSocket upgrade headers: Nginx passes these automatically for WS connections
+    nginx.ingress.kubernetes.io/websocket-services: "psychochat-backend-svc"
+    # Extend proxy timeouts to 1 hour to prevent WebSocket disconnects during idle periods
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "15"
+    # Enable HTTP/1.1 keep-alive for WebSocket upgrade compatibility
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    # Pass Upgrade and Connection headers for WebSocket protocol handshake
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+
+    # ── Request Body Size ─────────────────────────────────────────────────────
+    # 10MB limit for file uploads (profile photos etc.) — matches MAX_UPLOAD_SIZE_MB
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+
+    # ── CORS Configuration ────────────────────────────────────────────────────
+    # Android app and web app both use HTTPS; restrict to production domain only.
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "https://app.psikochat.com"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "Authorization, Content-Type, X-Idempotency-Key, X-Request-ID"
+    nginx.ingress.kubernetes.io/cors-expose-headers: "X-Idempotency-Key, X-Request-ID, X-RateLimit-Remaining"
+    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
+    nginx.ingress.kubernetes.io/cors-max-age: "86400"
+
+    # ── Security Headers ──────────────────────────────────────────────────────
+    nginx.ingress.kubernetes.io/server-snippet: |
+      add_header X-Frame-Options "DENY" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header X-XSS-Protection "1; mode=block" always;
+      add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+      add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+
+spec:
+  # ── TLS Configuration ────────────────────────────────────────────────────────
+  tls:
+    - hosts:
+        - api.psikochat.com
+      # cert-manager auto-creates and populates this secret with valid TLS cert
+      secretName: psychochat-tls-cert
+
+  # ── Routing Rules ─────────────────────────────────────────────────────────────
+  rules:
+    - host: api.psikochat.com
+      http:
+        paths:
+          # ── Public Health Check ──────────────────────────────────────────────
+          # /health is intentionally public for:
+          # - Load balancer health probes
+          # - External uptime monitors (e.g. UptimeRobot)
+          # DETAIL is controlled via HEALTH_CHECK_DETAILED=false in ConfigMap
+          - path: /health
+            pathType: Exact
+            backend:
+              service:
+                name: psychochat-backend-svc
+                port:
+                  number: 8001
+
+          # ── WebSocket Endpoint ───────────────────────────────────────────────
+          # Real-time chat WebSocket connections (Faz 10 Prompt 1)
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service:
+                name: psychochat-backend-svc
+                port:
+                  number: 8001
+
+          # ── API Catch-All ────────────────────────────────────────────────────
+          # All other API traffic routes here
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: psychochat-backend-svc
+                port:
+                  number: 8001
+
+          # ── BLOCKED PATHS ────────────────────────────────────────────────────
+          # /metrics is intentionally NOT defined here.
+          # Nginx Ingress will return 404 for direct external access to /metrics.
+          # Prometheus scrapes /metrics internally via Pod IPs directly (PodMonitor).
+          # This ensures metric data never leaks to public internet.

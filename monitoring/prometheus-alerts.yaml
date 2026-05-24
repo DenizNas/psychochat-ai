@@ -1,0 +1,189 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: psychochat-alert-rules
+  namespace: psychochat
+  labels:
+    app.kubernetes.io/name: psychochat-alerts
+    app.kubernetes.io/part-of: psychochat-platform
+    prometheus: psychochat-k8s-prometheus
+spec:
+  groups:
+    - name: psychochat-service-alerts
+      rules:
+        # ==========================================
+        # SEV-1: CRITICAL SERVICE OUTAGES (Emergency)
+        # ==========================================
+        - alert: BackendServiceDown
+          expr: up{job="psychochat-backend"} == 0
+          for: 1m
+          labels:
+            severity: SEV-1
+            tier: api
+          annotations:
+            summary: "Psychochat-AI backend service is completely down"
+            description: "No backend pods are active or reachable. All REST and WebSocket endpoints are currently offline."
+            runbook: "monitoring/runbooks/backend-down.md"
+
+        - alert: PostgresDatabaseDown
+          expr: sum(rate(psychochat_db_error_count_total[5m])) > 10
+          for: 1m
+          labels:
+            severity: SEV-1
+            tier: database
+          annotations:
+            summary: "PostgreSQL Database operational failure"
+            description: "High database error rates detected. SQL connections are failing, preventing profile management and journaling."
+            runbook: "monitoring/runbooks/postgres-failure.md"
+
+        - alert: RedisCacheDown
+          expr: sum(rate(psychochat_redis_fallback_count_total[5m])) > 15
+          for: 1m
+          labels:
+            severity: SEV-1
+            tier: cache
+          annotations:
+            summary: "Redis Cache is completely down"
+            description: "Redis server is unreachable. Fallback mechanisms are active but backend performance and WebSocket state scaling are compromised."
+            runbook: "monitoring/runbooks/redis-outage.md"
+
+        - alert: AIProviderCriticalFailure
+          expr: sum(rate(psychochat_ai_request_count{status="fallback_failure"}[5m])) > 0
+          for: 30s
+          labels:
+            severity: SEV-1
+            tier: ai
+          annotations:
+            summary: "AI multi-model orchestration total outage"
+            description: "Both primary OpenAI and local/fallback providers have failed to process requests. Empathy engine is offline."
+            runbook: "monitoring/runbooks/ai-provider-failure.md"
+
+        - alert: HTTPHighErrorRate
+          expr: (sum(rate(psychochat_error_count_total[5m])) / sum(rate(psychochat_request_count_total[5m]))) * 100 > 15
+          for: 2m
+          labels:
+            severity: SEV-1
+            tier: api
+          annotations:
+            summary: "HTTP high error rate (exceeds 15% request volume)"
+            description: "More than 15% of inbound HTTP API requests are failing with 5xx status codes."
+            runbook: "monitoring/runbooks/backend-down.md"
+
+        # ==========================================
+        # SEV-2: HIGH SERVICE DEGRADATION (Urgent)
+        # ==========================================
+        - alert: WebSocketGatewayOutage
+          expr: sum(rate(psychochat_websocket_disconnects_total{reason="broken_pipe"}[5m])) > 30
+          for: 2m
+          labels:
+            severity: SEV-2
+            tier: websocket
+          annotations:
+            summary: "WebSocket gateway mass disconnects"
+            description: "Elevated connection drop rate due to socket broken pipes. Real-time chat client synchronization degraded."
+            runbook: "monitoring/runbooks/websocket-outage.md"
+
+        - alert: HTTPLatencySpike
+          expr: histogram_quantile(0.99, sum(rate(psychochat_request_latency_seconds_bucket[5m])) by (le)) > 2.0
+          for: 3m
+          labels:
+            severity: SEV-2
+            tier: api
+          annotations:
+            summary: "HTTP latency spike (p99 exceeds 2 seconds)"
+            description: "API p99 latency has reached over 2.0s, breaching response speed commitments."
+            runbook: "monitoring/runbooks/backend-down.md"
+
+        - alert: AutonomicBackupFailure
+          expr: psychochat_backup_failure_count > 0
+          for: 2m
+          labels:
+            severity: SEV-2
+            tier: backups
+          annotations:
+            summary: "Daily compliance backup failure"
+            description: "Kubernetes CronJob for database and storage backup failed to run or export files safely."
+            runbook: "monitoring/runbooks/backup-recovery.md"
+
+        - alert: KubernetesPodCrashLoop
+          expr: sum(changes(kube_pod_container_status_restarts_total{namespace="psychochat"}[10m])) by (pod) > 3
+          for: 3m
+          labels:
+            severity: SEV-2
+            tier: infrastructure
+          annotations:
+            summary: "Kubernetes pod is trapped in CrashLoopBackOff"
+            description: "Pod {{ $labels.pod }} restarted more than 3 times in 10 minutes. Container crash loops detected."
+            runbook: "monitoring/runbooks/kubernetes-crashloop.md"
+
+        - alert: PersistentVolumeClaimFulling
+          expr: (kubelet_volume_stats_used_bytes{namespace="psychochat"} / kubelet_volume_stats_capacity_bytes{namespace="psychochat"}) * 100 > 85
+          for: 5m
+          labels:
+            severity: SEV-2
+            tier: infrastructure
+          annotations:
+            summary: "Persistent volume storage space is critical (>85% full)"
+            description: "Storage space on {{ $labels.persistentvolumeclaim }} has exceeded 85%. Risk of write freeze."
+            runbook: "monitoring/runbooks/kubernetes-crashloop.md"
+
+        # ==========================================
+        # SEV-3: MEDIUM ANOMALY DETECTIONS (Warn)
+        # ==========================================
+        - alert: HPAAutoscalingLimitReached
+          expr: kube_horizontalpodautoscaler_status_current_replicas{namespace="psychochat"} == kube_horizontalpodautoscaler_spec_max_replicas{namespace="psychochat"}
+          for: 5m
+          labels:
+            severity: SEV-3
+            tier: infrastructure
+          annotations:
+            summary: "Horizontal pod autoscaler reached maximum scaling limit"
+            description: "HPA is at max replicas. Under prolonged traffic peaks, no further automated scaling can occur."
+            runbook: "monitoring/runbooks/kubernetes-crashloop.md"
+
+        - alert: AICostBudgetExceeded
+          expr: sum(psychochat_ai_cost_estimate_total) > 40.0
+          for: 5m
+          labels:
+            severity: SEV-3
+            tier: ai
+          annotations:
+            summary: "AI daily operational API budget warning"
+            description: "Total LLM cost has exceeded $40.0 today, approaching the absolute budget cap of $50.0."
+            runbook: "monitoring/runbooks/ai-provider-failure.md"
+
+        - alert: HighRateLimitingEvents
+          expr: sum(rate(psychochat_rate_limit_exceeded_count_total[5m])) > 15
+          for: 5m
+          labels:
+            severity: SEV-3
+            tier: security
+          annotations:
+            summary: "High rate limiter triggers detected (possible brute-force)"
+            description: "Rate limiter endpoints are rejecting an elevated volume of requests. Potential credential stuffing or DDoS."
+            runbook: "monitoring/runbooks/backend-down.md"
+
+        # ==========================================
+        # SEV-4: LOW NOTIFICATION CONTROLS (Info)
+        # ==========================================
+        - alert: CacheEfficacyDegradation
+          expr: (sum(rate(psychochat_cache_miss_count_total[5m])) / (sum(rate(psychochat_cache_hit_count_total[5m])) + sum(rate(psychochat_cache_miss_count_total[5m])))) * 100 > 80
+          for: 10m
+          labels:
+            severity: SEV-4
+            tier: cache
+          annotations:
+            summary: "Redis Cache efficiency warning (hit rate < 20%)"
+            description: "High cache miss ratio detected. Excessive database queries are passing directly to SQLite/Postgres."
+            runbook: "monitoring/runbooks/redis-outage.md"
+
+        - alert: PodMemoryWarning
+          expr: (container_memory_working_set_bytes{namespace="psychochat", container!=""} / container_spec_memory_limit_bytes{namespace="psychochat", container!=""}) * 100 > 90
+          for: 5m
+          labels:
+            severity: SEV-4
+            tier: infrastructure
+          annotations:
+            summary: "Container memory footprint approaching limit (>90%)"
+            description: "Memory footprint of container {{ $labels.container }} in pod {{ $labels.pod }} is exceeding 90%. Risk of OOMKill."
+            runbook: "monitoring/runbooks/kubernetes-crashloop.md"

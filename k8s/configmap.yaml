@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: psychochat-config
+  namespace: psychochat
+  labels:
+    app.kubernetes.io/name: psychochat-config
+    app.kubernetes.io/part-of: psychochat-platform
+data:
+  # ── Application Environment ─────────────────────────────────────────────────
+  APP_ENV: "production"
+  DEBUG: "false"
+  LOG_LEVEL: "INFO"
+  JSON_LOGS_ENABLED: "true"
+
+  # ── API Documentation ────────────────────────────────────────────────────────
+  # Docs are disabled in production for security (no Swagger/ReDoc exposure)
+  DISABLE_DOCS: "true"
+
+  # ── Authentication ───────────────────────────────────────────────────────────
+  # JWT expiry: 7 days (10080 minutes)
+  JWT_EXPIRE_MINUTES: "10080"
+
+  # ── CORS ─────────────────────────────────────────────────────────────────────
+  # Comma-separated allowed origins. Mobile app uses HTTPS app domain.
+  CORS_ORIGINS: "https://app.psikochat.com"
+
+  # ── API Rate Limiting & Protection ──────────────────────────────────────────
+  RATE_LIMIT_ENABLED: "true"
+  LOGIN_RATE_LIMIT: "5/minute"
+  REGISTER_RATE_LIMIT: "3/minute"
+  PREDICT_RATE_LIMIT: "20/minute"
+  ANALYTICS_RATE_LIMIT: "60/minute"
+  # 2MB max request body (2 * 1024 * 1024 bytes)
+  MAX_REQUEST_BODY_BYTES: "2097152"
+
+  # ── Observability & Metrics ──────────────────────────────────────────────────
+  METRICS_ENABLED: "true"
+  PROMETHEUS_ENABLED: "true"
+
+  # ── Celery Concurrency Settings ──────────────────────────────────────────────
+  # Tune concurrency based on pod CPU limits (1 CPU = 2-4 workers recommended)
+  WORKER_CONCURRENCY: "2"
+
+  # ── PostgreSQL Non-Sensitive Settings ───────────────────────────────────────
+  # Sensitive values (PASSWORD, full DATABASE_URL) are in secrets.yaml
+  POSTGRES_DB: "psikochat"
+  POSTGRES_USER: "psikochat_user"
+  POSTGRES_HOST: "postgres"
+  POSTGRES_PORT: "5432"
+
+  # ── Redis Non-Sensitive Settings ─────────────────────────────────────────────
+  # Full REDIS_URL is in secrets.yaml; these help with connection diagnostics
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+
+  # ── Storage & Uploads ────────────────────────────────────────────────────────
+  # Switch to "s3" or "gcs" in production with managed object storage
+  UPLOAD_BACKEND: "local"
+  UPLOAD_DIR: "/app/uploads"
+  MAX_UPLOAD_SIZE_MB: "10"
+
+  # ── Health Check Settings ───────────────────────────────────────────────────
+  # Controls what health endpoint reveals (minimal for public exposure)
+  HEALTH_CHECK_DETAILED: "false"

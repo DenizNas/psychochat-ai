@@ -1,0 +1,187 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: psychochat-backend
+  namespace: psychochat
+  labels:
+    app: psychochat-backend
+    app.kubernetes.io/name: psychochat-backend
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: psychochat-platform
+    app.kubernetes.io/version: "latest"
+spec:
+  # Minimum 2 replicas for HA. HPA (hpa.yaml) scales this up to 6 at 70% CPU.
+  replicas: 2
+
+  # Zero-downtime rolling update:
+  #   maxUnavailable: 0  → always keep all existing pods running during update
+  #   maxSurge: 1        → allow one extra pod above desired count during rollout
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+
+  selector:
+    matchLabels:
+      app: psychochat-backend
+
+  template:
+    metadata:
+      labels:
+        app: psychochat-backend
+        app.kubernetes.io/name: psychochat-backend
+        app.kubernetes.io/component: api
+        app.kubernetes.io/part-of: psychochat-platform
+      annotations:
+        # Prometheus pod scraping annotations (used by standard Prometheus scrape rules)
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8001"
+        prometheus.io/path: "/metrics"
+        # Force rolling restart when ConfigMap/Secret changes (update this timestamp to trigger rollout)
+        configmap/hash: "v1"
+
+    spec:
+      # ── Security Context (Pod Level) ────────────────────────────────────────
+      # Matches Dockerfile: USER appuser (non-root)
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+
+      # ── Graceful Termination ────────────────────────────────────────────────
+      # Allow 30s for in-flight HTTP/WebSocket connections to drain
+      terminationGracePeriodSeconds: 30
+
+      # ── Topology Spread (Multi-Node HA) ────────────────────────────────────
+      # Spread pods across nodes to avoid single point of failure
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: psychochat-backend
+
+      containers:
+        - name: backend
+          # Image tag should be overridden by CI/CD pipeline with specific SHA/tag:
+          #   kubectl set image deployment/psychochat-backend backend=ghcr.io/deniznas/psychochat-ai:v1.2.3
+          image: ghcr.io/deniznas/psychochat-ai:latest
+          imagePullPolicy: IfNotPresent
+
+          # Override CMD from Dockerfile for explicit control
+          command:
+            - uvicorn
+            - src.api.main:app
+            - --host
+            - "0.0.0.0"
+            - --port
+            - "8001"
+            - --workers
+            - "1"
+            # Uvicorn log-level controlled via LOG_LEVEL env var at application level
+
+          ports:
+            - containerPort: 8001
+              name: http
+              protocol: TCP
+
+          # ── Security Context (Container Level) ───────────────────────────────
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false # Needs write access to /app/logs, /app/data
+            capabilities:
+              drop:
+                - ALL
+
+          # ── Environment: ConfigMap (non-sensitive) ──────────────────────────
+          envFrom:
+            - configMapRef:
+                name: psychochat-config
+            # ── Environment: Secret (sensitive) ─────────────────────────────
+            - secretRef:
+                name: psychochat-secrets
+
+          # ── Readiness Probe ──────────────────────────────────────────────────
+          # Pod receives traffic ONLY after this passes.
+          # FastAPI /health should return 200 quickly once DB connection is ready.
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+              httpHeaders:
+                - name: X-Health-Check
+                  value: kubernetes
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+            successThreshold: 1
+
+          # ── Liveness Probe ───────────────────────────────────────────────────
+          # Pod is restarted if this fails. Higher thresholds to avoid thrashing.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+              httpHeaders:
+                - name: X-Health-Check
+                  value: kubernetes
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 3
+            successThreshold: 1
+
+          # ── Startup Probe ────────────────────────────────────────────────────
+          # Prevents liveness from killing slow-starting containers (model loading etc.)
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 12 # 12 * 5s = 60s max startup time
+
+          # ── Resource Limits ──────────────────────────────────────────────────
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+
+          # ── Volume Mounts ────────────────────────────────────────────────────
+          volumeMounts:
+            - name: data-volume
+              mountPath: /app/data
+            - name: uploads-volume
+              mountPath: /app/uploads
+            - name: backups-volume
+              mountPath: /app/backups
+            - name: logs-volume
+              mountPath: /app/logs
+
+      # ── Volumes ──────────────────────────────────────────────────────────────
+      volumes:
+        - name: data-volume
+          persistentVolumeClaim:
+            claimName: psychochat-data-pvc
+        - name: uploads-volume
+          # IMPORTANT: ReadWriteOnce PVC works for single-node or when all pods land on same node.
+          # For multi-node production scaling, replace with S3/GCS or ReadWriteMany (EFS/NFS).
+          persistentVolumeClaim:
+            claimName: psychochat-uploads-pvc
+        - name: backups-volume
+          persistentVolumeClaim:
+            claimName: psychochat-backups-pvc
+        # Ephemeral log volume — logs stream to stdout/stderr, this is for local buffering
+        - name: logs-volume
+          emptyDir:
+            sizeLimit: 500Mi

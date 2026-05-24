@@ -195,9 +195,10 @@ fun HomeScreen(navController: NavController, tokenManager: TokenManager) {
                             onClick = { navController.navigate("therapy") }
                         )
                         SupportItem(
-                            title = "Duygu\nİzleyici",
+                            title = "Wellness\nPaneli",
                             icon = Icons.Default.Face,
-                            progress = 0.8f
+                            progress = 0.8f,
+                            onClick = { navController.navigate("wellness_dashboard") }
                         )
                     }
                 }

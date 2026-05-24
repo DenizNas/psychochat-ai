@@ -2,7 +2,7 @@ import os
 import time
 import logging
 import openai
-from dotenv import load_dotenv
+from src.core.config import settings
 
 from src.response_engine.models import EngineConfig, EngineInput, EngineOutput
 from src.response_engine.prompts import build_system_prompt, build_user_prompt, PROMPT_VERSION
@@ -12,9 +12,11 @@ from src.response_engine.safety import (
     CAT_INJECTION_ATTEMPT
 )
 from src.response_engine.response_formatter import format_response
-from src.response_engine.memory_manager import process_memory
+from src.response_engine.memory_manager import process_memory          # backward-compat kept
+from src.response_engine.personal_context_engine import process_turn as pce_process_turn
 from src.response_engine.response_ranker import score_response, RankResult, NORMAL_THRESHOLD, CRISIS_THRESHOLD
 from src.services.database import save_chat_message
+from src.ai_providers import ai_orchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -22,12 +24,11 @@ class ResponseEngine:
     def __init__(self, config: EngineConfig = None):
         self.config = config or EngineConfig()
         
-        load_dotenv()
-        api_key = os.getenv("OPENAI_API_KEY")
+        api_key = settings.OPENAI_API_KEY
         if api_key:
             openai.api_key = api_key
         else:
-            logger.warning("OPENAI_API_KEY not found in environment variables.")
+            logger.warning("OPENAI_API_KEY not found in configuration system.")
 
     def generate_response(self, engine_input: EngineInput) -> EngineOutput:
         """
@@ -38,13 +39,6 @@ class ResponseEngine:
         4. Formatting
         5. Database Saving
         """
-        if not openai.api_key:
-            return EngineOutput(
-                final_text="Üzgünüm, şu an sistemde bir bağlantı sorunu yaşıyorum (API Key eksik).",
-                is_fallback=True,
-                metadata={"error": "API Key missing"}
-            )
-            
         start_time = time.time()
         
         # Structured Logging (Masking sensitive text, logging metadata)
@@ -56,16 +50,20 @@ class ResponseEngine:
         # pre-init for safe reference in finally/error paths
         memory_meta: dict = {"memory_count": 0, "selected_memory_count": 0, "memory_injected": False, "injection_text": ""}
         prompt_meta: dict = {"prompt_version": PROMPT_VERSION, "prompt_sections": [], "prompt_length": 0, "injection_guard_enabled": True}
+        memory_lookup_latency = 0.0
 
-        # 1.5. Memory Pipeline (Extract → Lookup → Inject)
-        # Runs BEFORE prompt assembly so memory_context flows into build_system_prompt.
-        # Crisis guard is enforced inside process_memory — no raw crisis data ever stored.
-        memory_meta = process_memory(
+        # 1.5. Memory Pipeline (PersonalContextEngine — Extract → Lookup → Inject)
+        # Primary engine: personal_context_engine (Faz 10 P2)
+        # Crisis guard and privacy guard enforced inside process_turn.
+        start_mem_time = time.time()
+        memory_meta = pce_process_turn(
             user_id=engine_input.user_id,
             text=engine_input.text,
             emotion=engine_input.emotion,
             risk=engine_input.risk,
+            privacy_mode=engine_input.preferences.privacy_mode
         )
+        memory_lookup_latency = time.time() - start_mem_time
         memory_context_str = memory_meta.get("injection_text", "") if memory_meta.get("memory_injected") else ""
 
         # 1. Prompts (modular builder — assembles all sections with versioning)
@@ -74,6 +72,7 @@ class ResponseEngine:
             emotion=engine_input.emotion,
             risk=engine_input.risk,
             memory_context=memory_context_str,
+            preferences=engine_input.preferences.model_dump() if hasattr(engine_input.preferences, "model_dump") else engine_input.preferences.dict()
         )
         user_prompt = build_user_prompt(
             text=engine_input.text,
@@ -107,7 +106,6 @@ class ResponseEngine:
                 category=input_reason if input_reason else "default"
             )
             safe_resp = format_response(safe_resp)
-            from src.response_engine.safety import log_safety_event
             log_safety_event({
                 "request_id": engine_input.user_id,
                 "crisis_detected": True,
@@ -124,6 +122,25 @@ class ResponseEngine:
                 save_chat_message(engine_input.user_id, "assistant", safe_resp)
             except Exception as db_err:
                 logger.error(f"Failed to save chat history (pre-GPT fallback): {db_err}")
+            
+            try:
+                from src.services.database import SessionLocal
+                from src.services.compliance_service import compliance_service
+                db = SessionLocal()
+                try:
+                    compliance_service.log_security_event(
+                        db=db,
+                        user_id=engine_input.user_id,
+                        event_type="crisis_safety_triggered",
+                        ip_address="0.0.0.0",
+                        user_agent="internal",
+                        severity="WARNING",
+                        metadata={"reason": input_reason, "stage": "pre_gpt_check"}
+                    )
+                finally:
+                    db.close()
+            except Exception as audit_err:
+                logger.error(f"Failed to log crisis audit log: {audit_err}")
             latency = time.time() - start_time
             return EngineOutput(
                 final_text=safe_resp,
@@ -131,6 +148,7 @@ class ResponseEngine:
                 metadata={
                     "latency_sec": latency,
                     "model_used": "safety_template",
+                    "final_model": "crisis_safe_template",
                     "safety": {
                         "is_safe": False,
                         "safety_reason": input_reason,
@@ -159,117 +177,97 @@ class ResponseEngine:
         error_meta = None
         is_crisis: bool = engine_input.risk.strip().lower() in {"1", "crisis", "kriz"}
 
-        # Ranker tracking vars
-        rank_result: RankResult = RankResult(score=0.0, passes=False)
-        retry_count: int = 0
-        primary_model_used: bool = False
-        fallback_model_used: bool = False
-        fallback_reason: str = ""
-        final_model: str = ""
+        # Telemetry / Orchestrator tracking vars
+        ai_provider = "safety_template"
+        ai_model = "crisis_safe_template"
+        ai_latency_ms = 0.0
+        ai_fallback_used = False
+        ai_cost_estimate = 0.0
+        ai_timeout = False
+        ai_circuit_open = False
+        retry_count = 0
+        rank_result = RankResult(score=1.0, passes=True)
+        fallback_reason = ""
+        final_model = "crisis_safe_template"
+        primary_model_used = "crisis_safe_template"
+        fallback_model_used = None
 
-        def _call_gpt(model: str) -> str:
-            """Single GPT call; returns stripped content or empty string."""
-            resp = openai.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=self.config.temperature,
-                max_tokens=self.config.max_tokens,
-                timeout=self.config.timeout_seconds
-            )
-            content = resp.choices[0].message.content
-            return content.strip() if content else ""
-
-        # ── a) Primary model call ─────────────────────────────────────────
-        try:
-            final_text = _call_gpt(self.config.primary_model)
-            primary_model_used = True
-            final_model = self.config.primary_model
-        except Exception as e_primary:
-            logger.warning(
-                "GPT primary model failed | Model: %s | Error: %s",
-                self.config.primary_model, e_primary
-            )
-            error_meta = str(e_primary)
+        if is_crisis:
+            # 100% Deterministic Crisis Bypass: Bypasses remote LLM calls completely!
+            logger.warning("ENGINE | Crisis input detected! Bypassing remote LLM calls.")
+            final_text = get_crisis_safe_response(language=engine_input.language, category="default")
             is_fallback = True
-            fallback_reason = "primary_model_exception"
+            fallback_reason = "crisis_bypass_safety"
 
-        # ── b) Score primary response ─────────────────────────────────────
-        if primary_model_used and final_text:
-            rank_result = score_response(final_text, emotion=engine_input.emotion, risk=engine_input.risk)
-            logger.info(
-                "RANKER | UserID: %s | Model: %s | Score: %.4f | Passes: %s | Reasons: %s",
-                engine_input.user_id, self.config.primary_model,
-                rank_result.score, rank_result.passes, rank_result.reasons
+            try:
+                from src.services.database import SessionLocal
+                from src.services.compliance_service import compliance_service
+                db = SessionLocal()
+                try:
+                    compliance_service.log_security_event(
+                        db=db,
+                        user_id=engine_input.user_id,
+                        event_type="crisis_safety_triggered",
+                        ip_address="0.0.0.0",
+                        user_agent="internal",
+                        severity="WARNING",
+                        metadata={"reason": "pre_flagged_risk", "stage": "input_risk_bypass"}
+                    )
+                finally:
+                    db.close()
+            except Exception as audit_err:
+                logger.error(f"Failed to log crisis bypass audit log: {audit_err}")
+        else:
+            # Normal turns: route via multi-provider Orchestrator
+            model_config = {
+                "model": self.config.primary_model,
+                "temperature": self.config.temperature,
+                "max_tokens": self.config.max_tokens,
+                "timeout_seconds": self.config.timeout_seconds
+            }
+            
+            # OpenAI is bypassed/minimalized in privacy mode
+            orch_res = ai_orchestrator.generate_response(
+                messages=messages,
+                model_config=model_config,
+                bypass_openai=engine_input.preferences.privacy_mode
             )
-
-        # ── c) Decide retry / fallback based on score ─────────────────────
-        needs_action = (
-            not primary_model_used          # primary call failed outright
-            or not final_text               # got empty response
-            or not rank_result.passes       # quality too low
-        )
-
-        if needs_action:
-            if is_crisis:
-                # Crisis path: NEVER retry — go straight to safe template
-                logger.warning(
-                    "RANKER CRISIS FALLBACK | UserID: %s | Score: %.4f | Reasons: %s",
-                    engine_input.user_id, rank_result.score, rank_result.reasons
-                )
-                final_text = get_crisis_safe_response(
-                    language=engine_input.language,
-                    category="default"
-                )
-                is_fallback = True
-                fallback_reason = fallback_reason or "crisis_quality_threshold"
-                final_model = "crisis_safe_template"
+            
+            final_text = orch_res.text
+            ai_provider = orch_res.provider
+            ai_model = orch_res.model
+            ai_latency_ms = orch_res.latency_ms
+            ai_fallback_used = orch_res.fallback_used
+            ai_cost_estimate = orch_res.cost_estimate
+            ai_timeout = (orch_res.error == "timeout" or "timeout" in str(orch_res.error).lower())
+            ai_circuit_open = (orch_res.error == "circuit_breaker_open")
+            is_fallback = orch_res.fallback_used
+            final_model = orch_res.model
+            error_meta = orch_res.error
+            if orch_res.fallback_used:
+                fallback_reason = orch_res.error or "primary_failed"
+                primary_model_used = settings.AI_PRIMARY_MODEL
+                fallback_model_used = orch_res.model
             else:
-                # Normal path: 1 retry with fallback model
-                max_retries = getattr(self.config, "max_retries", 1)
-                attempt = 0
-                while attempt < max_retries:
-                    attempt += 1
-                    retry_count += 1
-                    try:
-                        logger.info(
-                            "RANKER RETRY | UserID: %s | Attempt: %d | Model: %s",
-                            engine_input.user_id, attempt, self.config.fallback_model
-                        )
-                        final_text = _call_gpt(self.config.fallback_model)
-                        fallback_model_used = True
-                        final_model = self.config.fallback_model
-                        is_fallback = True
-                        fallback_reason = fallback_reason or "quality_below_threshold"
+                primary_model_used = orch_res.model
+                fallback_model_used = None
 
-                        # Score the retry response
-                        rank_result = score_response(
-                            final_text, emotion=engine_input.emotion, risk=engine_input.risk
-                        )
-                        logger.info(
-                            "RANKER RETRY SCORE | UserID: %s | Model: %s | Score: %.4f | Passes: %s",
-                            engine_input.user_id, self.config.fallback_model,
-                            rank_result.score, rank_result.passes
-                        )
-                        if rank_result.passes:
-                            break  # good enough — stop retrying
-                    except Exception as e_fallback:
-                        logger.error(
-                            "GPT fallback model failed | Model: %s | Error: %s",
-                            self.config.fallback_model, e_fallback
-                        )
-                        final_text = "Üzgünüm, şu an sana yanıt üretmekte zorlanıyorum. Lütfen daha sonra tekrar dene."
-                        is_fallback = True
-                        fallback_reason = "fallback_model_exception"
-                        final_model = "hardcoded_fallback"
-                        return EngineOutput(
-                            final_text=final_text,
-                            is_fallback=True,
-                            metadata={"error": "Both GPT models failed", "details": str(e_fallback)}
-                        )
-
-        # If primary worked but quality was borderline and no retry was done
-        if not final_model:
-            final_model = self.config.primary_model
+            # Response ranker check
+            rank_result = score_response(final_text, emotion=engine_input.emotion, risk=engine_input.risk)
+            if not rank_result.passes:
+                logger.warning(
+                    "ENGINE | Orchestrator response failed ranker quality check (UserID: %s, Score: %.4f). Switching to local fallback.",
+                    engine_input.user_id, rank_result.score
+                )
+                orch_res = ai_orchestrator._execute_fallback(messages, model_config, "ranker_quality_failed")
+                final_text = orch_res.text
+                ai_provider = orch_res.provider
+                ai_model = orch_res.model
+                ai_fallback_used = True
+                is_fallback = True
+                final_model = orch_res.model
+                fallback_reason = "ranker_quality_failed"
+                fallback_model_used = orch_res.model
 
         # 4. Safety Layer (Crisis-Aware Policy)
         is_safe, safety_reason = check_safety(
@@ -328,8 +326,12 @@ class ResponseEngine:
             "ENGINE_LOG | UserID: %s | Latency: %.3fs | final_model: %s | "
             "primary_model_used: %s | fallback_model_used: %s | retry_count: %d | "
             "quality_score: %.4f | quality_reasons: %s | fallback_reason: %s | "
-            "memory_count: %d | selected_memory_count: %d | memory_injected: %s | "
-            "prompt_version: %s | prompt_sections: %s | prompt_length: %d | injection_guard_enabled: %s",
+            "persistent_memory_enabled: %s | memory_count: %d | selected_memory_count: %d | "
+            "memory_injected: %s | memory_candidates: %d | "
+            "memory_filtered_privacy: %d | memory_filtered_crisis: %d | "
+            "memory_lookup_latency: %.4fs | "
+            "prompt_version: %s | prompt_sections: %s | prompt_length: %d | injection_guard_enabled: %s | "
+            "pref_style: %s | pref_len: %s | pref_privacy: %s",
             engine_input.user_id,
             latency,
             final_model,
@@ -339,13 +341,21 @@ class ResponseEngine:
             rank_result.score,
             rank_result.reasons,
             fallback_reason,
+            True,
             memory_meta.get("memory_count", 0),
             memory_meta.get("selected_memory_count", 0),
             memory_meta.get("memory_injected", False),
+            memory_meta.get("memory_candidates", 0),
+            memory_meta.get("memory_filtered_privacy", 0),
+            memory_meta.get("memory_filtered_crisis", 0),
+            memory_lookup_latency,
             prompt_meta.get("prompt_version", PROMPT_VERSION),
             prompt_meta.get("prompt_sections", []),
             prompt_meta.get("prompt_length", 0),
             prompt_meta.get("injection_guard_enabled", True),
+            engine_input.preferences.response_style,
+            engine_input.preferences.answer_length_preference,
+            engine_input.preferences.privacy_mode
         )
         
         return EngineOutput(
@@ -364,9 +374,19 @@ class ResponseEngine:
                     "fallback_reason": fallback_reason or None,
                 },
                 "memory": {
+                    "persistent_memory_enabled": True,
                     "memory_count": memory_meta.get("memory_count", 0),
                     "selected_memory_count": memory_meta.get("selected_memory_count", 0),
                     "memory_injected": memory_meta.get("memory_injected", False),
+                    "memory_candidates": memory_meta.get("memory_candidates", 0),
+                    "memory_filtered_privacy": memory_meta.get("memory_filtered_privacy", 0),
+                    "memory_filtered_crisis": memory_meta.get("memory_filtered_crisis", 0),
+                    "memory_lookup_latency": round(memory_lookup_latency, 4)
+                },
+                "preferences": {
+                    "response_style": engine_input.preferences.response_style,
+                    "answer_length_preference": engine_input.preferences.answer_length_preference,
+                    "privacy_mode": engine_input.preferences.privacy_mode
                 },
                 "safety": {
                     "is_safe": is_safe,

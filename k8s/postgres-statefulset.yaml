@@ -1,0 +1,168 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: psychochat-postgres
+  namespace: psychochat
+  labels:
+    app: psychochat-postgres
+    app.kubernetes.io/name: psychochat-postgres
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: psychochat-platform
+  annotations:
+    # ────────────────────────────────────────────────────────────────────────────
+    # STAGING / LOCAL ONLY — Do NOT use in production!
+    # Production recommendation: AWS RDS PostgreSQL or Google Cloud SQL
+    # Benefits of managed DB over StatefulSet:
+    #   - Automatic failover and multi-AZ replication
+    #   - Point-in-time recovery (PITR)
+    #   - Automated patching and maintenance windows
+    #   - Connection pooling via RDS Proxy / Cloud SQL Auth Proxy
+    # When switching to managed PostgreSQL:
+    #   1. Delete this StatefulSet and postgres-service.yaml (or keep headless only)
+    #   2. Update DATABASE_URL secret to point to managed endpoint (with ?sslmode=require)
+    #   3. Run database migrations against the new host before cutover
+    # ────────────────────────────────────────────────────────────────────────────
+spec:
+  # StatefulSet provides stable network identity (postgres-0.postgres.psychochat.svc.cluster.local)
+  # and ordered pod management critical for database reliability.
+  serviceName: postgres
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: psychochat-postgres
+
+  template:
+    metadata:
+      labels:
+        app: psychochat-postgres
+        app.kubernetes.io/name: psychochat-postgres
+        app.kubernetes.io/component: database
+        app.kubernetes.io/part-of: psychochat-platform
+
+    spec:
+      # ── Security Context (Pod Level) ────────────────────────────────────────
+      # PostgreSQL Alpine standard UID is 70
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
+
+      # ── Init Container: Data Directory Permissions ──────────────────────────
+      # Ensures PostgreSQL data directory has correct permissions before DB starts
+      initContainers:
+        - name: fix-permissions
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - "chown -R 70:70 /var/lib/postgresql/data && chmod 700 /var/lib/postgresql/data"
+          securityContext:
+            runAsUser: 0 # Needs root to chown
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - containerPort: 5432
+              name: postgres
+              protocol: TCP
+
+          # ── Security Context (Container Level) ───────────────────────────────
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false # Postgres writes WAL, pid files, etc.
+            capabilities:
+              drop:
+                - ALL
+
+          # ── Environment Variables (mixed ConfigMap + Secret) ────────────────
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: psychochat-config
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: psychochat-config
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: psychochat-secrets
+                  key: POSTGRES_PASSWORD
+            # PostgreSQL data directory — must be on the mounted PVC
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+
+          # ── Resource Limits ──────────────────────────────────────────────────
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+
+          # ── Liveness Probe ───────────────────────────────────────────────────
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - psikochat_user
+                - -d
+                - psikochat
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          # ── Readiness Probe ──────────────────────────────────────────────────
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - psikochat_user
+                - -d
+                - psikochat
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          # ── Volume Mounts ────────────────────────────────────────────────────
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+
+  # ── VolumeClaimTemplates ──────────────────────────────────────────────────────
+  # StatefulSet creates PVCs automatically from this template.
+  # PVC name pattern: postgres-data-psychochat-postgres-0
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+        labels:
+          app.kubernetes.io/name: psychochat-postgres-pvc
+          app.kubernetes.io/part-of: psychochat-platform
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 5Gi
+        # Optionally specify storageClass:
+        # storageClassName: "fast-ssd"  # Use fast SSD for DB performance

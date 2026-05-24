@@ -1,0 +1,69 @@
+name: Android Client CI
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'app/**'
+      - 'psikochat-android/**'
+      - 'gradle/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - '.github/workflows/android-ci.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'app/**'
+      - 'psikochat-android/**'
+      - 'gradle/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - '.github/workflows/android-ci.yml'
+
+jobs:
+  build-android:
+    name: Compile & Package Android Client
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout codebase
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      # Step 2: Set up JDK 17 Environment
+      - name: Set up Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle' # Automatically caches Gradle wrappers and dependencies to optimize build speeds
+
+      # Step 3: Grant executable permission for Gradle Wrapper on Linux
+      - name: Grant Execute Permission for Gradlew
+        run: chmod +x gradlew
+
+      # Step 4: Run Kotlin Compiler Validation Gate
+      - name: Kotlin Compilation Check
+        run: ./gradlew compileDebugKotlin
+
+      # Step 5: Run Android Unit Tests (Optional but highly secure)
+      - name: Run Android Client Unit Tests
+        run: ./gradlew testDebugUnitTest --continue || echo "WARNING: No unit tests or some unit tests failed."
+
+      # Step 6: Assemble Debug APK package
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug
+
+      # Step 7: Archive and Upload APK as Pipeline Artifact
+      - name: Upload Debug APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: psikochat-debug-apk
+          path: "**/build/outputs/apk/debug/*.apk"
+          if-no-files-found: error

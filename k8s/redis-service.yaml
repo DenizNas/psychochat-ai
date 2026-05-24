@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  # Service name MUST be "redis" — it must match the hostname in REDIS_URL secrets:
+  # REDIS_URL=redis://redis:6379/0
+  # CELERY_BROKER_URL=redis://redis:6379/0
+  namespace: psychochat
+  labels:
+    app: psychochat-redis
+    app.kubernetes.io/name: redis-svc
+    app.kubernetes.io/component: cache
+    app.kubernetes.io/part-of: psychochat-platform
+spec:
+  # ClusterIP: Redis is NEVER exposed externally.
+  # NetworkPolicy (network-policy.yaml) further restricts access to backend/worker only.
+  type: ClusterIP
+
+  ports:
+    - port: 6379
+      targetPort: 6379
+      protocol: TCP
+      name: redis
+
+  selector:
+    app: psychochat-redis

@@ -74,3 +74,15 @@ build/
 # JUPYTER / NOTEBOOKS CACHE
 # =========================
 .ipynb_checkpoints/
+
+# =========================
+# BACKUPS
+# =========================
+backups/
+
+# =========================
+# KUBERNETES SECRETS (CRITICAL)
+# =========================
+# Never commit real secrets to Git!
+# Only secrets.example.yaml (placeholders) is tracked.
+k8s/secrets.yaml

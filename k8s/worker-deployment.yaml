@@ -1,0 +1,156 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: psychochat-worker
+  namespace: psychochat
+  labels:
+    app: psychochat-worker
+    app.kubernetes.io/name: psychochat-worker
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/part-of: psychochat-platform
+spec:
+  # Start with 2 replicas for redundancy.
+  # Worker HPA (optional) can be added in hpa.yaml using queue-depth metrics.
+  replicas: 2
+
+  # Standard RollingUpdate for workers — tasks in flight complete before pod dies
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+
+  selector:
+    matchLabels:
+      app: psychochat-worker
+
+  template:
+    metadata:
+      labels:
+        app: psychochat-worker
+        app.kubernetes.io/name: psychochat-worker
+        app.kubernetes.io/component: worker
+        app.kubernetes.io/part-of: psychochat-platform
+
+    spec:
+      # ── Security Context (Pod Level) ────────────────────────────────────────
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+
+      # ── Graceful Termination ────────────────────────────────────────────────
+      # 120 seconds allows long-running AI inference tasks to complete before SIGKILL.
+      # Celery worker handles SIGTERM by waiting for current tasks (warm shutdown).
+      terminationGracePeriodSeconds: 120
+
+      containers:
+        - name: worker
+          image: ghcr.io/deniznas/psychochat-ai:latest
+          imagePullPolicy: IfNotPresent
+
+          # Celery worker command.
+          # --concurrency is set here but can be overridden via WORKER_CONCURRENCY env.
+          # -Q default: process only the 'default' queue (add queues as needed)
+          # --without-heartbeat: reduces Redis chatter in K8s environments
+          command:
+            - celery
+            - -A
+            - src.workers.celery_app
+            - worker
+            - --loglevel=info
+            - --concurrency=2
+            - --without-heartbeat
+            - --without-gossip
+            - --without-mingle
+
+          # ── Security Context (Container Level) ───────────────────────────────
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+
+          # ── Environment Variables ────────────────────────────────────────────
+          envFrom:
+            - configMapRef:
+                name: psychochat-config
+            - secretRef:
+                name: psychochat-secrets
+
+          # ── Graceful Shutdown Hook ───────────────────────────────────────────
+          # Sends Celery warm shutdown signal before pod terminates.
+          # Celery will finish in-progress tasks then exit cleanly.
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - "celery -A src.workers.celery_app control shutdown"
+
+          # ── Readiness Probe ──────────────────────────────────────────────────
+          # Workers don't serve HTTP, so we check if the Celery process is alive
+          # by verifying it can ping itself via the broker.
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - "celery -A src.workers.celery_app inspect ping --timeout 5 2>/dev/null | grep -q 'pong'"
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+
+          # ── Liveness Probe ───────────────────────────────────────────────────
+          # Less frequent check — restarts only if worker is truly dead
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - "celery -A src.workers.celery_app inspect ping --timeout 5 2>/dev/null | grep -q 'pong'"
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            timeoutSeconds: 15
+            failureThreshold: 3
+
+          # ── Resource Limits ──────────────────────────────────────────────────
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+
+          # ── Volume Mounts ────────────────────────────────────────────────────
+          volumeMounts:
+            - name: data-volume
+              mountPath: /app/data
+            - name: uploads-volume
+              mountPath: /app/uploads
+            - name: backups-volume
+              mountPath: /app/backups
+            - name: logs-volume
+              mountPath: /app/logs
+
+      # ── Volumes ──────────────────────────────────────────────────────────────
+      volumes:
+        - name: data-volume
+          persistentVolumeClaim:
+            claimName: psychochat-data-pvc
+        - name: uploads-volume
+          persistentVolumeClaim:
+            claimName: psychochat-uploads-pvc
+        - name: backups-volume
+          persistentVolumeClaim:
+            claimName: psychochat-backups-pvc
+        - name: logs-volume
+          emptyDir:
+            sizeLimit: 500Mi

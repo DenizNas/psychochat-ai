@@ -169,7 +169,7 @@ fun TherapyScreen(navController: NavController, tokenManager: TokenManager) {
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
-                items(psychologists) { psychologist ->
+                items(psychologists, key = { it.name }) { psychologist ->
                     PsychologistCard(psychologist) {
                         scope.launch {
                             snackbarHostState.showSnackbar(

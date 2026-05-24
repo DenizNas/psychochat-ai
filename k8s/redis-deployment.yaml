@@ -1,0 +1,141 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: psychochat-redis-pvc
+  namespace: psychochat
+  labels:
+    app.kubernetes.io/name: psychochat-redis-pvc
+    app.kubernetes.io/component: cache
+    app.kubernetes.io/part-of: psychochat-platform
+  annotations:
+    # NOTE: For production, replace this with managed Redis (ElastiCache / Memorystore)
+    # and delete this PVC + the Deployment below entirely.
+    storage.psychochat.io/environment: "staging"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: psychochat-redis
+  namespace: psychochat
+  labels:
+    app: psychochat-redis
+    app.kubernetes.io/name: psychochat-redis
+    app.kubernetes.io/component: cache
+    app.kubernetes.io/part-of: psychochat-platform
+  annotations:
+    # ────────────────────────────────────────────────────────────────────────────
+    # STAGING / LOCAL ONLY — Do NOT use in production!
+    # Production recommendation: AWS ElastiCache Redis or Google Cloud Memorystore
+    # When switching to managed Redis:
+    #   1. Delete this Deployment and its PVC
+    #   2. Update REDIS_URL in secrets.yaml to point to managed endpoint
+    #   3. For TLS: use rediss://host:6380/0
+    # ────────────────────────────────────────────────────────────────────────────
+spec:
+  replicas: 1
+
+  # Recreate ensures clean data directory handoff (avoid AOF corruption on overlap)
+  strategy:
+    type: Recreate
+
+  selector:
+    matchLabels:
+      app: psychochat-redis
+
+  template:
+    metadata:
+      labels:
+        app: psychochat-redis
+        app.kubernetes.io/name: psychochat-redis
+        app.kubernetes.io/component: cache
+        app.kubernetes.io/part-of: psychochat-platform
+
+    spec:
+      # ── Security Context (Pod Level) ────────────────────────────────────────
+      # Redis Alpine standard non-root UID is 999
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          imagePullPolicy: IfNotPresent
+
+          # AOF persistence enabled for data durability across pod restarts.
+          # Also binds to 0.0.0.0 (inside pod only — NetworkPolicy blocks external access).
+          command:
+            - redis-server
+            - --appendonly
+            - "yes"
+            - --appendfsync
+            - everysec
+            - --maxmemory
+            - 200mb
+            - --maxmemory-policy
+            - allkeys-lru
+
+          ports:
+            - containerPort: 6379
+              name: redis
+              protocol: TCP
+
+          # ── Security Context (Container Level) ───────────────────────────────
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false # Redis needs to write AOF data to /data
+            capabilities:
+              drop:
+                - ALL
+
+          # ── Resource Limits ──────────────────────────────────────────────────
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+
+          # ── Liveness Probe ───────────────────────────────────────────────────
+          livenessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          # ── Readiness Probe ──────────────────────────────────────────────────
+          readinessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          # ── Volume Mounts ────────────────────────────────────────────────────
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+
+      # ── Volumes ──────────────────────────────────────────────────────────────
+      volumes:
+        - name: redis-data
+          persistentVolumeClaim:
+            claimName: psychochat-redis-pvc

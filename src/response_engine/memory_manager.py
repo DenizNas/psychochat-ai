@@ -35,6 +35,14 @@ import threading
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 
+# DB Persistence Imports (Phase 7)
+from src.services.database import (
+    create_memory,
+    get_memories_for_user,
+    cleanup_old_memories,
+    clear_user_memories_db
+)
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -226,43 +234,42 @@ def _is_crisis_content(risk: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# In-Memory Store (Thread-safe via per-user list; extend with Redis/DB later)
+# Persistent Store Integration (Phase 7)
 # ---------------------------------------------------------------------------
 
-# { user_id: List[MemoryRecord] }
-_memory_store: Dict[str, List[MemoryRecord]] = {}
-
-# Lock for thread-safe access to _memory_store under concurrent FastAPI workers.
-# Granularity: global (not per-user) — acceptable for ≤50 memories/user workload.
+# Global lock to ensure thread-safe operations where necessary
 _store_lock = threading.Lock()
 
+def _db_row_to_record(row: Dict[str, Any]) -> MemoryRecord:
+    """Converts a database dictionary record back into a MemoryRecord instance."""
+    rec = MemoryRecord(
+        user_id=row["user_id"],
+        memory_type=row["memory_key"],
+        content=row["memory_value"],
+        confidence=row["confidence"],
+        source=row["source"]
+    )
+    rec.created_at = row["created_at"]
+    rec.updated_at = row["updated_at"]
+    return rec
 
 def _get_user_memories(user_id: str) -> List[MemoryRecord]:
-    return _memory_store.get(user_id, [])
-
-
-def _deduplicate_and_trim(user_id: str):
-    """
-    Remove memories with identical (memory_type, content) pairs.
-    Trim to MAX_MEMORIES_PER_USER by dropping lowest-confidence entries.
-    Called after every write to keep the store lean.
-    Must be called while _store_lock is held by the caller.
-    """
-    memories = _memory_store.get(user_id, [])
-    seen: set = set()
-    deduped: List[MemoryRecord] = []
-    for m in memories:
-        key = (m.memory_type, m.content)
-        if key not in seen:
-            seen.add(key)
-            deduped.append(m)
-
-    if len(deduped) > MAX_MEMORIES_PER_USER:
-        deduped.sort(key=lambda m: (m.confidence, m.updated_at), reverse=True)
-        deduped = deduped[:MAX_MEMORIES_PER_USER]
-
-    _memory_store[user_id] = deduped
-
+    """Loads user memories from the SQLite database. Graceful fallback on failure."""
+    try:
+        rows = get_memories_for_user(user_id)
+        records = []
+        for r in rows:
+            try:
+                records.append(_db_row_to_record(r))
+            except Exception as mapper_err:
+                logger.error(f"Failed to map db row to MemoryRecord: {mapper_err}")
+        return records
+    except Exception as db_err:
+        logger.critical(
+            f"DATABASE UNAVAILABLE: Failed to fetch memories from SQLite: {db_err}. "
+            f"Graceful fallback returning empty memories list."
+        )
+        return []
 
 # ---------------------------------------------------------------------------
 # Memory Extraction (Auto-extraction from user input)
@@ -273,11 +280,13 @@ def extract_and_store_memories(
     text: str,
     emotion: str,
     risk: str,
+    privacy_mode: bool = False,
 ) -> Dict[str, Any]:
     """
-    Analyses user text and stores extracted insights as memory records.
+    Analyses user text and stores extracted insights as memory records in SQLite.
 
     Privacy Rules Enforced:
+        - Privacy Mode: If True, NO extraction occurs.
         - Crisis turns: NO extraction (crisis content must NEVER enter memory raw)
         - PII / harmful patterns: blocked by _is_privacy_safe()
         - Only pattern-matched, semantically abstract content is stored
@@ -286,6 +295,16 @@ def extract_and_store_memories(
         Extraction metadata dict for structured logging.
     """
     extracted_count = 0
+
+    # ── RULE 0: Privacy Mode ──────────────────────────────────────────────
+    if privacy_mode:
+        logger.info("MEMORY_EXTRACT | UserID: %s | SKIPPED (privacy mode active)", user_id)
+        return {
+            "memory_count": len(_get_user_memories(user_id)),
+            "extracted_count": 0,
+            "skipped_reason": "privacy_mode",
+            "memory_injected": False,
+        }
 
     # ── RULE 1: Never extract during crisis turns ─────────────────────────
     if _is_crisis_content(risk):
@@ -302,72 +321,57 @@ def extract_and_store_memories(
 
     normalized_text = _nfc(text)
 
-    for memory_type, pattern, template in _EXTRACTION_RULES:
-        match = re.search(pattern, normalized_text, flags=re.IGNORECASE | re.UNICODE)
-        if not match:
-            continue
+    try:
+        for memory_type, pattern, template in _EXTRACTION_RULES:
+            match = re.search(pattern, normalized_text, flags=re.IGNORECASE | re.UNICODE)
+            if not match:
+                continue
 
-        matched_span = match.group(0)
-        content = template.replace("{match}", matched_span)
+            matched_span = match.group(0)
+            content = template.replace("{match}", matched_span)
 
-        # ── RULE 2: Privacy safety gate ───────────────────────────────────
-        if not _is_privacy_safe(content):
-            logger.info(
-                "MEMORY_EXTRACT | UserID: %s | BLOCKED (privacy gate) | Type: %s",
-                user_id, memory_type,
-            )
-            continue
-
-        # ── Check for existing same-type memory (refresh vs. insert) ─────
-        existing_memories = _get_user_memories(user_id)
-        existing = next(
-            (m for m in existing_memories if m.memory_type == memory_type and m.content == _sanitize_content(content)),
-            None,
-        )
-
-        if existing:
-            existing.refresh(confidence_boost=0.05)
-        else:
-            record = MemoryRecord(
-                user_id=user_id,
-                memory_type=memory_type,
-                content=content,
-                confidence=0.7,
-                source="auto_extraction",
-            )
-            with _store_lock:
-                if user_id not in _memory_store:
-                    _memory_store[user_id] = []
-                _memory_store[user_id].append(record)
-            extracted_count += 1
-
-    # ── Recurring emotion tracking (separate from text pattern matching) ──
-    if emotion and emotion.lower() not in {"neutral", "normal", "nötr"}:
-        emotion_content = f"Kullanıcı sık sık '{emotion}' duygusu bildirdi."
-        if _is_privacy_safe(emotion_content):
-            existing_memories = _get_user_memories(user_id)
-            existing_emo = next(
-                (m for m in existing_memories if m.memory_type == "recurring_emotions" and emotion.lower() in m.content.lower()),
-                None,
-            )
-            if existing_emo:
-                existing_emo.refresh(confidence_boost=0.1)
-            else:
-                record = MemoryRecord(
-                    user_id=user_id,
-                    memory_type="recurring_emotions",
-                    content=emotion_content,
-                    confidence=0.6,
-                    source="auto_extraction",
+            # ── RULE 2: Privacy safety gate ───────────────────────────────────
+            if not _is_privacy_safe(content):
+                logger.info(
+                    "MEMORY_EXTRACT | UserID: %s | BLOCKED (privacy gate) | Type: %s",
+                    user_id, memory_type,
                 )
-                with _store_lock:
-                    if user_id not in _memory_store:
-                        _memory_store[user_id] = []
-                    _memory_store[user_id].append(record)
+                continue
+
+            # ── Insert / Update (duplicate protection handled natively in create_memory) ──
+            success = create_memory(
+                user_id=user_id,
+                memory_key=memory_type,
+                memory_value=_sanitize_content(content),
+                emotion=emotion,
+                source_message=normalized_text,
+                confidence=0.7,
+                source="auto_extraction"
+            )
+            if success:
                 extracted_count += 1
 
-    with _store_lock:
-        _deduplicate_and_trim(user_id)
+        # ── Recurring emotion tracking ──
+        if emotion and emotion.lower() not in {"neutral", "normal", "nötr"}:
+            emotion_content = f"Kullanıcı sık sık '{emotion}' duygusu bildirdi."
+            if _is_privacy_safe(emotion_content):
+                success = create_memory(
+                    user_id=user_id,
+                    memory_key="recurring_emotions",
+                    memory_value=_sanitize_content(emotion_content),
+                    emotion=emotion,
+                    source_message=normalized_text,
+                    confidence=0.6,
+                    source="auto_extraction"
+                )
+                if success:
+                    extracted_count += 1
+
+        # ── Enforce max memory limit ──
+        cleanup_old_memories(user_id, max_limit=MAX_MEMORIES_PER_USER)
+
+    except Exception as extract_err:
+        logger.error(f"Error during memory extraction/storage pipeline: {extract_err}")
 
     total_count = len(_get_user_memories(user_id))
     logger.info(
@@ -392,6 +396,7 @@ def lookup_relevant_memories(
     emotion: str,
     risk: str,
     text: str = "",
+    privacy_mode: bool = False,
 ) -> List[MemoryRecord]:
     """
     Retrieves relevant memories for the current turn.
@@ -404,9 +409,14 @@ def lookup_relevant_memories(
         5. important_topics     (lowest priority)
 
     Crisis rule: never inject memories in crisis turns — safety layer takes over.
+    Privacy rule: if privacy_mode is True, skip all injection.
 
     Returns up to MAX_INJECTED_MEMORIES records.
     """
+    # ── RULE: Privacy Mode ────────────────────────────────────────────────
+    if privacy_mode:
+        return []
+
     # ── RULE: Never inject memories in crisis turns ────────────────────────
     if _is_crisis_content(risk):
         return []
@@ -490,6 +500,7 @@ def process_memory(
     text: str,
     emotion: str,
     risk: str,
+    privacy_mode: bool = False,
 ) -> Dict[str, Any]:
     """
     Main entry point called by the Response Engine.
@@ -498,26 +509,12 @@ def process_memory(
     2. Looks up relevant memories for injection
     3. Builds the injection string
     4. Returns metadata for structured logging
-
-    Args:
-        user_id:  Authenticated user identifier
-        text:     Privacy-sanitized user input (already cleaned by input_validator)
-        emotion:  Detected emotion label
-        risk:     Detected crisis risk label
-
-    Returns:
-        {
-            "injection_text":         str (empty if nothing relevant or crisis turn),
-            "memory_count":           int (total stored memories for user),
-            "selected_memory_count":  int (how many were selected for injection),
-            "memory_injected":        bool,
-        }
     """
     # Step 1: Extract
-    extract_meta = extract_and_store_memories(user_id, text, emotion, risk)
+    extract_meta = extract_and_store_memories(user_id, text, emotion, risk, privacy_mode=privacy_mode)
 
     # Step 2: Lookup relevant
-    relevant = lookup_relevant_memories(user_id, emotion, risk, text)
+    relevant = lookup_relevant_memories(user_id, emotion, risk, text, privacy_mode=privacy_mode)
     selected_count = len(relevant)
 
     # Step 3: Build injection text
@@ -542,25 +539,27 @@ def process_memory(
 
 
 # ---------------------------------------------------------------------------
-# Memory Management (Future-extensible)
+# Memory Management (Persistent SQLite Implementation)
 # ---------------------------------------------------------------------------
 
 def clear_user_memory(user_id: str) -> int:
     """
-    Deletes all memory records for a user.
-    Returns the number of records deleted.
-    (Extensible: replace with DB DELETE when persistent store is added.)
+    Deletes all memory records for a user from persistent SQLite DB.
+    Returns the number of records deleted. Graceful fallback on database error.
     """
-    count = len(_memory_store.pop(user_id, []))
-    logger.info("MEMORY_CLEAR | UserID: %s | Deleted: %d records", user_id, count)
-    return count
+    try:
+        count = clear_user_memories_db(user_id)
+        logger.info("MEMORY_CLEAR | UserID: %s | Deleted: %d records", user_id, count)
+        return count
+    except Exception as e:
+        logger.error(f"Error clearing persistent memory for user {user_id}: {e}")
+        return 0
 
 
 def get_user_memory_summary(user_id: str) -> Dict[str, Any]:
     """
     Returns a privacy-safe summary of stored memories for a user.
     Excludes raw content — only counts per type and confidence stats.
-    (Extensible: use for /memory/status API endpoint later.)
     """
     memories = _get_user_memories(user_id)
     by_type: Dict[str, int] = {t: 0 for t in MEMORY_TYPES}

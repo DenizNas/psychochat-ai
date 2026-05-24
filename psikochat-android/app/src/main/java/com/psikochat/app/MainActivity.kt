@@ -13,6 +13,9 @@ import androidx.navigation.compose.rememberNavController
 import com.psikochat.app.ui.auth.LoginScreen
 import com.psikochat.app.ui.auth.RegisterScreen
 import com.psikochat.app.ui.chat.ChatScreen
+import com.psikochat.app.ui.insights.InsightsScreen
+import com.psikochat.app.ui.insights.WellnessReportScreen
+import com.psikochat.app.ui.insights.ReflectionScreen
 import com.psikochat.app.ui.theme.PsikochatTheme
 import com.psikochat.app.data.local.TokenManager
 
@@ -31,6 +34,9 @@ class MainActivity : ComponentActivity() {
                         composable("login") { LoginScreen(navController, tokenManager) }
                         composable("register") { RegisterScreen(navController, tokenManager) }
                         composable("chat") { ChatScreen(navController, tokenManager) }
+                        composable("insights") { InsightsScreen(navController, tokenManager) }
+                        composable("wellness_report") { WellnessReportScreen(navController, tokenManager) }
+                        composable("reflections") { ReflectionScreen(navController, tokenManager) }
                     }
                 }
             }

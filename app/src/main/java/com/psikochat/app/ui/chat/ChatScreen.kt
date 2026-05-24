@@ -1,5 +1,6 @@
 package com.psikochat.app.ui.chat
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -35,6 +36,8 @@ import androidx.navigation.NavController
 import com.psikochat.app.data.api.RetrofitClient
 import com.psikochat.app.data.local.TokenManager
 import com.psikochat.app.data.model.HistoryItem
+import com.psikochat.app.data.realtime.ConnectionState
+import com.psikochat.app.data.realtime.RealtimeWebSocketManager
 import com.psikochat.app.data.repository.ChatRepository
 import com.psikochat.app.ui.theme.*
 import kotlinx.coroutines.launch
@@ -45,11 +48,22 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(navController: NavController, tokenManager: TokenManager) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val db = com.psikochat.app.data.local.AppDatabase.getInstance(context)
+    val syncManager = com.psikochat.app.data.sync.SyncManager.getInstance(context)
     val api = RetrofitClient.create(tokenManager)
-    val repo = ChatRepository(api)
+    val repo = ChatRepository(api, db.chatDao())
     val factory = object : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return ChatViewModel(repo) as T
+            val wsManager = RealtimeWebSocketManager(
+                tokenManager = tokenManager,
+                scope = androidx.lifecycle.ViewModelProvider
+                    .NewInstanceFactory()
+                    .create(androidx.lifecycle.ViewModel::class.java)
+                    .let { kotlinx.coroutines.MainScope() },
+            )
+            @Suppress("UNCHECKED_CAST")
+            return ChatViewModel(repo, wsManager, tokenManager, syncManager) as T
         }
     }
     val viewModel: ChatViewModel = viewModel(factory = factory)
@@ -58,6 +72,8 @@ fun ChatScreen(navController: NavController, tokenManager: TokenManager) {
     val isLoading by viewModel.isLoading.collectAsState()
     val error by viewModel.error.collectAsState()
     val lastFailedMessage by viewModel.lastFailedMessage.collectAsState()
+    val isAssistantTyping by viewModel.isAssistantTyping.collectAsState()
+    val connectionState by viewModel.connectionState.collectAsState()
     
     val currentToken by tokenManager.getToken().collectAsState(initial = "loading")
 
@@ -94,37 +110,44 @@ fun ChatScreen(navController: NavController, tokenManager: TokenManager) {
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = null,
-                            modifier = Modifier.size(24.dp),
-                            tint = LoginTextColor
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("PsikoChat", style = MaterialTheme.typography.titleMedium, color = LoginTextColor)
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.KeyboardArrowLeft, contentDescription = "Geri", tint = LoginTextColor)
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { }) {
-                        Icon(Icons.Default.Menu, contentDescription = "Menü", tint = LoginTextColor)
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent)
-            )
+            Column {
+                CenterAlignedTopAppBar(
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp),
+                                tint = LoginTextColor
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("PsikoChat", style = MaterialTheme.typography.titleMedium, color = LoginTextColor)
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(Icons.Default.KeyboardArrowLeft, contentDescription = "Geri", tint = LoginTextColor)
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { }) {
+                            Icon(Icons.Default.Menu, contentDescription = "Menü", tint = LoginTextColor)
+                        }
+                    },
+                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent)
+                )
+                // ─── Connection Status Banner ───────────────────────────────────
+                ConnectionBanner(state = connectionState)
+            }
         },
         bottomBar = {
             ChatInputBar(
                 isLoading = isLoading,
                 onSendMessage = { text ->
                     viewModel.sendMessage(text)
+                },
+                onTextChanged = {
+                    viewModel.onUserTyping()
                 }
             )
         },
@@ -204,7 +227,7 @@ fun ChatScreen(navController: NavController, tokenManager: TokenManager) {
                             }
                         }
 
-                        items(msgs) { msg ->
+                        items(msgs, key = { it.id ?: (it.role + "_" + it.text.hashCode() + "_" + it.timestamp.hashCode()) }) { msg ->
                             MessageBubble(msg)
                             Spacer(modifier = Modifier.height(12.dp))
                         }
@@ -212,6 +235,11 @@ fun ChatScreen(navController: NavController, tokenManager: TokenManager) {
                 }
 
                 if (isLoading) {
+                    item {
+                        TypingIndicator()
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+                } else if (isAssistantTyping) {
                     item {
                         TypingIndicator()
                         Spacer(modifier = Modifier.height(12.dp))
@@ -326,7 +354,7 @@ private fun Dot(alpha: Float) {
 }
 
 @Composable
-fun ChatInputBar(isLoading: Boolean, onSendMessage: (String) -> Unit) {
+fun ChatInputBar(isLoading: Boolean, onSendMessage: (String) -> Unit, onTextChanged: () -> Unit = {}) {
     var inputText by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
 
@@ -344,21 +372,19 @@ fun ChatInputBar(isLoading: Boolean, onSendMessage: (String) -> Unit) {
                 onValueChange = { 
                     if (it.length <= 1000) {
                         inputText = it
+                        onTextChanged() // typing indicator
                     }
                 },
                 modifier = Modifier
                     .weight(1f)
-                    .focusRequester(focusRequester),
+                    .focusRequester(focusRequester)
+                    .background(Color(0xFFF5F5F5), RoundedCornerShape(24.dp)),
                 enabled = !isLoading,
                 placeholder = { Text("Mesajınızı yazın...", fontSize = 14.sp) },
                 shape = RoundedCornerShape(24.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = LoginButton,
-                    unfocusedBorderColor = Color.LightGray,
-                    focusedContainerColor = Color(0xFFF5F5F5),
-                    unfocusedContainerColor = Color(0xFFF5F5F5),
-                    disabledContainerColor = Color(0xFFF5F5F5),
-                    disabledIndicatorColor = Color.Transparent
+                    unfocusedBorderColor = Color.LightGray
                 ),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(
@@ -401,7 +427,7 @@ fun EmptyChatState(modifier: Modifier = Modifier) {
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(
-                imageVector = Icons.Default.ChatBubble,
+                imageVector = Icons.Default.Email,
                 contentDescription = null,
                 modifier = Modifier.size(64.dp),
                 tint = LoginButton.copy(alpha = 0.5f)
@@ -479,3 +505,56 @@ fun extractDateString(timestamp: String?): String {
         "Bilinmeyen Tarih"
     }
 }
+
+/**
+ * WebSocket bağlantı durumu banner'ı.
+ * - Connected / Connecting → görünmez
+ * - Reconnecting → amber uyarı
+ * - Failed → kırmızı, "REST ile devam ediliyor"
+ * - Disconnected → görünmez (çıkış yapıldı)
+ */
+@Composable
+fun ConnectionBanner(state: ConnectionState) {
+    AnimatedVisibility(
+        visible = state is ConnectionState.Reconnecting || state is ConnectionState.Failed
+    ) {
+        val (bgColor, icon, text) = when (state) {
+            is ConnectionState.Reconnecting -> Triple(
+                Color(0xFFFFF3E0),
+                Icons.Default.Refresh,
+                "Bağlantı yenileniyor... (${state.attempt}. deneme)"
+            )
+            is ConnectionState.Failed -> Triple(
+                Color(0xFFFFEBEE),
+                Icons.Default.Warning,
+                "Çevrimdışı — Mesajlar REST üzerinden iletilecek"
+            )
+            else -> Triple(Color.Transparent, Icons.Default.CheckCircle, "")
+        }
+
+        Surface(
+            color = bgColor,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = if (state is ConnectionState.Failed) Color(0xFFC62828) else Color(0xFFE65100)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = text,
+                    fontSize = 11.sp,
+                    color = if (state is ConnectionState.Failed) Color(0xFFC62828) else Color(0xFFE65100),
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+    }
+}

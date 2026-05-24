@@ -1,0 +1,141 @@
+# =============================================================================
+# Prometheus Monitoring Configuration for Psychochat-AI
+# =============================================================================
+#
+# TWO deployment options are provided:
+#
+# OPTION A — Prometheus Operator (PodMonitor)
+#   Use if your cluster has kube-prometheus-stack or prometheus-operator installed.
+#   Install: helm install prometheus prometheus-community/kube-prometheus-stack
+#
+# OPTION B — Standalone Prometheus (ConfigMap scrape config)
+#   Use if you're running vanilla Prometheus in the cluster.
+#
+# =============================================================================
+
+# ── OPTION A: Prometheus Operator PodMonitor ─────────────────────────────────
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: psychochat-backend-monitor
+  namespace: psychochat
+  labels:
+    app: psychochat-backend
+    app.kubernetes.io/name: psychochat-backend-monitor
+    app.kubernetes.io/part-of: psychochat-platform
+    # This label must match the Prometheus Operator's podMonitorSelector.
+    # Default kube-prometheus-stack selector: release=prometheus
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: psychochat-backend
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+      # Honor pod annotations for additional labels
+      honorLabels: true
+  # Scrape from all namespaces that match (or just psychochat)
+  namespaceSelector:
+    matchNames:
+      - psychochat
+---
+# ── OPTION B: Standalone Prometheus ConfigMap ─────────────────────────────────
+# Deploy this ConfigMap if using vanilla Prometheus (not Operator).
+# Mount this as /etc/prometheus/prometheus.yml in the Prometheus pod.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-scrape-config
+  namespace: psychochat
+  labels:
+    app.kubernetes.io/name: prometheus-scrape-config
+    app.kubernetes.io/part-of: psychochat-platform
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+      external_labels:
+        cluster: 'psychochat-production'
+        environment: 'production'
+
+    scrape_configs:
+      # ── Psychochat Backend Metrics ───────────────────────────────────────────
+      # Discovers all backend pods via Kubernetes SD and scrapes /metrics
+      - job_name: 'psychochat-backend-pods'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - psychochat
+        relabel_configs:
+          # Only scrape pods labeled app=psychochat-backend
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: psychochat-backend
+          # Only scrape pods with annotation prometheus.io/scrape=true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: "true"
+          # Use the path specified in annotation (default: /metrics)
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          # Build the scrape address from pod IP + annotation port
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          # Add pod namespace as a label
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          # Add pod name as a label
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name
+          # Add pod node as a label
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            action: replace
+            target_label: kubernetes_node
+
+      # ── Kubernetes Node Metrics ──────────────────────────────────────────────
+      - job_name: 'kubernetes-nodes'
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+
+    # ── Alerting Rules ───────────────────────────────────────────────────────────
+    # Reference: deploy prometheus/alertmanager for alert routing
+    # Suggested alerts (create as PrometheusRule CRD with Operator):
+    #
+    #   - alert: BackendHighErrorRate
+    #     expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+    #     for: 2m
+    #     labels:
+    #       severity: critical
+    #
+    #   - alert: BackendPodNotReady
+    #     expr: kube_pod_status_ready{namespace="psychochat", condition="false"} > 0
+    #     for: 1m
+    #     labels:
+    #       severity: warning
+    #
+    #   - alert: BackendHighMemory
+    #     expr: container_memory_usage_bytes{namespace="psychochat", container="backend"} > 900000000
+    #     for: 5m
+    #     labels:
+    #       severity: warning
+    #
+    #   - alert: HPAMaxedOut
+    #     expr: kube_horizontalpodautoscaler_status_current_replicas{namespace="psychochat"} == kube_horizontalpodautoscaler_spec_max_replicas{namespace="psychochat"}
+    #     for: 5m
+    #     labels:
+    #       severity: warning

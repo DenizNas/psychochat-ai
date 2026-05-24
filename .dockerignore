@@ -1,22 +1,41 @@
+# Python Caches
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
+
+# Virtual Environments
 env/
 venv/
 .venv/
-.env
-node_modules/
+.env*
+*.db
+data/
+logs/
+uploads/
+
+# Android Code & Gradle
+app/
+.gradle/
+gradle/
+gradlew*
+*.properties
+*.kts
+
+# Git & IDEs
 .git/
 .gitignore
 .vscode/
 .idea/
+.gemini/
+
+# Testing & Scratch Directories
 .pytest_cache/
+scratch/
 tests/
+
+# Docker Files
 Dockerfile
-docker-compose.yml
-docker-compose.prod.yml
-# logs ve data gibi yerel kalması gereken klasörler (projeye göre ayarlayabilirsiniz)
-# data/
-# models/ (Bunu YORUMA ALIYORUZ çünkü prod imajında model dosyalarına ihtiyacımız var)
+docker-compose*.yml
+backups/
