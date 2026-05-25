@@ -1,30 +1,29 @@
 package com.psikochat.app.data.repository
-import com.psikochat.app.data.api.PsikoApi
-import com.psikochat.app.data.model.LoginRequest
-import com.psikochat.app.data.model.RegisterRequest
-import com.psikochat.app.data.model.AuthResponse
-import com.psikochat.app.data.model.Resource
 
+import com.psikochat.app.data.api.PsikoApi
+import com.psikochat.app.data.model.Resource
+import com.psikochat.app.data.model.ScheduledIntervention
 import retrofit2.HttpException
 import java.io.IOException
 import org.json.JSONObject
 
-class AuthRepository(private val api: PsikoApi) {
-    suspend fun login(user: String, pass: String): Resource<AuthResponse> {
+class WellnessScheduleRepository(private val api: PsikoApi) {
+
+    suspend fun getScheduledInterventions(): Resource<List<ScheduledIntervention>> {
         return try {
-            val res = api.login(LoginRequest(user, pass))
-            Resource.Success(res)
+            val response = api.getScheduledInterventions()
+            Resource.Success(response)
         } catch (e: Exception) {
-            parseError(e, "Giriş başarısız")
+            parseError(e, "Wellness programı yüklenemedi")
         }
     }
-    
-    suspend fun register(user: String, pass: String): Resource<Boolean> {
+
+    suspend fun refreshScheduledInterventions(): Resource<List<ScheduledIntervention>> {
         return try {
-            api.register(RegisterRequest(user, pass))
-            Resource.Success(true)
+            val response = api.refreshScheduledInterventions()
+            Resource.Success(response)
         } catch (e: Exception) {
-            parseError(e, "Kayıt başarısız")
+            parseError(e, "Wellness programı güncellenemedi")
         }
     }
 
@@ -42,7 +41,7 @@ class AuthRepository(private val api: PsikoApi) {
                 }
                 Resource.Error(parsedMessage)
             }
-            is IOException -> Resource.Error("Sunucuya bağlanılamadı. Lütfen internet bağlantınızı kontrol edin.")
+            is IOException -> Resource.Error("Sunucuya bağlanılamadı. İnternet bağlantınızı kontrol edin.")
             else -> Resource.Error(e.message ?: defaultMessage)
         }
     }

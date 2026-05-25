@@ -1,30 +1,39 @@
 package com.psikochat.app.data.repository
-import com.psikochat.app.data.api.PsikoApi
-import com.psikochat.app.data.model.LoginRequest
-import com.psikochat.app.data.model.RegisterRequest
-import com.psikochat.app.data.model.AuthResponse
-import com.psikochat.app.data.model.Resource
 
+import com.psikochat.app.data.api.PsikoApi
+import com.psikochat.app.data.model.ProfileResponse
+import com.psikochat.app.data.model.Resource
+import com.psikochat.app.data.model.UpdateProfileRequest
 import retrofit2.HttpException
 import java.io.IOException
 import org.json.JSONObject
 
-class AuthRepository(private val api: PsikoApi) {
-    suspend fun login(user: String, pass: String): Resource<AuthResponse> {
+class ProfileRepository(private val api: PsikoApi) {
+
+    suspend fun getProfile(): Resource<ProfileResponse> {
         return try {
-            val res = api.login(LoginRequest(user, pass))
-            Resource.Success(res)
+            val response = api.getProfile()
+            Resource.Success(response)
         } catch (e: Exception) {
-            parseError(e, "Giriş başarısız")
+            parseError(e, "Profil bilgileri alınamadı")
         }
     }
-    
-    suspend fun register(user: String, pass: String): Resource<Boolean> {
+
+    suspend fun updateProfile(request: UpdateProfileRequest): Resource<ProfileResponse> {
         return try {
-            api.register(RegisterRequest(user, pass))
-            Resource.Success(true)
+            val response = api.updateProfile(request)
+            Resource.Success(response)
         } catch (e: Exception) {
-            parseError(e, "Kayıt başarısız")
+            parseError(e, "Profil güncellenemedi")
+        }
+    }
+
+    suspend fun uploadProfilePhoto(filePart: okhttp3.MultipartBody.Part): Resource<ProfileResponse> {
+        return try {
+            val response = api.uploadProfilePhoto(filePart)
+            Resource.Success(response)
+        } catch (e: Exception) {
+            parseError(e, "Fotoğraf yüklenemedi")
         }
     }
 
@@ -42,7 +51,7 @@ class AuthRepository(private val api: PsikoApi) {
                 }
                 Resource.Error(parsedMessage)
             }
-            is IOException -> Resource.Error("Sunucuya bağlanılamadı. Lütfen internet bağlantınızı kontrol edin.")
+            is IOException -> Resource.Error("Sunucuya bağlanılamadı. İnternet bağlantınızı kontrol edin.")
             else -> Resource.Error(e.message ?: defaultMessage)
         }
     }

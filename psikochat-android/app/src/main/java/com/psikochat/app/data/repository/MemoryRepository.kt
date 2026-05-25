@@ -1,30 +1,39 @@
 package com.psikochat.app.data.repository
-import com.psikochat.app.data.api.PsikoApi
-import com.psikochat.app.data.model.LoginRequest
-import com.psikochat.app.data.model.RegisterRequest
-import com.psikochat.app.data.model.AuthResponse
-import com.psikochat.app.data.model.Resource
 
+import com.psikochat.app.data.api.PsikoApi
+import com.psikochat.app.data.model.UserMemory
+import com.psikochat.app.data.model.MemoryConsolidationResponse
+import com.psikochat.app.data.model.Resource
 import retrofit2.HttpException
 import java.io.IOException
 import org.json.JSONObject
 
-class AuthRepository(private val api: PsikoApi) {
-    suspend fun login(user: String, pass: String): Resource<AuthResponse> {
+class MemoryRepository(private val api: PsikoApi) {
+
+    suspend fun getMemories(): Resource<List<UserMemory>> {
         return try {
-            val res = api.login(LoginRequest(user, pass))
-            Resource.Success(res)
+            val response = api.getMemories()
+            Resource.Success(response)
         } catch (e: Exception) {
-            parseError(e, "Giriş başarısız")
+            parseError(e, "Hatırlanan bilgiler listesi alınamadı.")
         }
     }
-    
-    suspend fun register(user: String, pass: String): Resource<Boolean> {
+
+    suspend fun deleteMemory(memoryId: Int): Resource<Unit> {
         return try {
-            api.register(RegisterRequest(user, pass))
-            Resource.Success(true)
+            api.deleteMemory(memoryId)
+            Resource.Success(Unit)
         } catch (e: Exception) {
-            parseError(e, "Kayıt başarısız")
+            parseError(e, "Hafıza kaydı silinemedi.")
+        }
+    }
+
+    suspend fun refreshMemories(): Resource<MemoryConsolidationResponse> {
+        return try {
+            val response = api.refreshMemories()
+            Resource.Success(response)
+        } catch (e: Exception) {
+            parseError(e, "Bellek konsolidasyonu çalıştırılamadı.")
         }
     }
 
@@ -42,7 +51,7 @@ class AuthRepository(private val api: PsikoApi) {
                 }
                 Resource.Error(parsedMessage)
             }
-            is IOException -> Resource.Error("Sunucuya bağlanılamadı. Lütfen internet bağlantınızı kontrol edin.")
+            is IOException -> Resource.Error("Sunucuya bağlanılamadı. İnternet bağlantınızı kontrol edin.")
             else -> Resource.Error(e.message ?: defaultMessage)
         }
     }

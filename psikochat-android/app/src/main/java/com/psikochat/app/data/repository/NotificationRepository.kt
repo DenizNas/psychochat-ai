@@ -1,30 +1,38 @@
 package com.psikochat.app.data.repository
-import com.psikochat.app.data.api.PsikoApi
-import com.psikochat.app.data.model.LoginRequest
-import com.psikochat.app.data.model.RegisterRequest
-import com.psikochat.app.data.model.AuthResponse
-import com.psikochat.app.data.model.Resource
 
+import com.psikochat.app.data.api.PsikoApi
+import com.psikochat.app.data.model.Resource
+import com.psikochat.app.data.model.NotificationEvent
 import retrofit2.HttpException
 import java.io.IOException
 import org.json.JSONObject
 
-class AuthRepository(private val api: PsikoApi) {
-    suspend fun login(user: String, pass: String): Resource<AuthResponse> {
+class NotificationRepository(private val api: PsikoApi) {
+
+    suspend fun getNotifications(): Resource<List<NotificationEvent>> {
         return try {
-            val res = api.login(LoginRequest(user, pass))
-            Resource.Success(res)
+            val response = api.getNotifications()
+            Resource.Success(response)
         } catch (e: Exception) {
-            parseError(e, "Giriş başarısız")
+            parseError(e, "Bildirimler alınamadı")
         }
     }
-    
-    suspend fun register(user: String, pass: String): Resource<Boolean> {
+
+    suspend fun refreshNotifications(): Resource<List<NotificationEvent>> {
         return try {
-            api.register(RegisterRequest(user, pass))
-            Resource.Success(true)
+            val response = api.refreshNotifications()
+            Resource.Success(response)
         } catch (e: Exception) {
-            parseError(e, "Kayıt başarısız")
+            parseError(e, "Bildirim takvimi yenilenemedi")
+        }
+    }
+
+    suspend fun markNotificationDelivered(notificationId: Int): Resource<String> {
+        return try {
+            val response = api.markNotificationDelivered(notificationId)
+            Resource.Success(response["detail"] ?: "Bildirim iletildi")
+        } catch (e: Exception) {
+            parseError(e, "Bildirim durumu güncellenemedi")
         }
     }
 
@@ -42,7 +50,7 @@ class AuthRepository(private val api: PsikoApi) {
                 }
                 Resource.Error(parsedMessage)
             }
-            is IOException -> Resource.Error("Sunucuya bağlanılamadı. Lütfen internet bağlantınızı kontrol edin.")
+            is IOException -> Resource.Error("Bağlantı hatası. İnternet bağlantınızı kontrol edin.")
             else -> Resource.Error(e.message ?: defaultMessage)
         }
     }

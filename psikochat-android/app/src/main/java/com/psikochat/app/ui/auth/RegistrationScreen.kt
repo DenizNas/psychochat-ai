@@ -32,7 +32,7 @@ import androidx.lifecycle.ViewModelProvider
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LoginScreen(navController: NavController, tokenManager: TokenManager) {
+fun RegistrationScreen(navController: NavController, tokenManager: TokenManager) {
     val api = RetrofitClient.create(tokenManager)
     val repo = AuthRepository(api)
     val factory = object : ViewModelProvider.Factory {
@@ -44,12 +44,14 @@ fun LoginScreen(navController: NavController, tokenManager: TokenManager) {
     
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
     var validationError by remember { mutableStateOf<String?>(null) }
     val authState by viewModel.authState.collectAsState()
     
     if (authState is Resource.Success && (authState.data == true)) {
         LaunchedEffect(Unit) {
-            navController.navigate("main_graph") { popUpTo("auth_graph") { inclusive = true } }
+            viewModel.resetState()
+            navController.navigate("login") { popUpTo("register") { inclusive = true } }
         }
     }
 
@@ -73,7 +75,7 @@ fun LoginScreen(navController: NavController, tokenManager: TokenManager) {
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = { /* Handle back */ }) {
+                    IconButton(onClick = { navController.popBackStack() }) {
                         Icon(imageVector = Icons.Default.KeyboardArrowLeft, contentDescription = "Back", tint = LoginTextColor)
                     }
                 },
@@ -122,7 +124,7 @@ fun LoginScreen(navController: NavController, tokenManager: TokenManager) {
             Spacer(modifier = Modifier.height(40.dp))
             
             Text(
-                text = "Giriş Yap",
+                text = "Kayıt Ol",
                 style = MaterialTheme.typography.headlineLarge.copy(
                     fontWeight = FontWeight.Bold,
                     fontSize = 32.sp
@@ -131,7 +133,7 @@ fun LoginScreen(navController: NavController, tokenManager: TokenManager) {
             )
             
             Text(
-                text = "Yolculuğuna devam et.",
+                text = "Aramıza katıl ve sohbete başla.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = LoginSecondaryText,
                 textAlign = TextAlign.Center
@@ -182,6 +184,29 @@ fun LoginScreen(navController: NavController, tokenManager: TokenManager) {
                 ),
                 singleLine = true
             )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            TextField(
+                value = confirmPassword,
+                onValueChange = { confirmPassword = it },
+                placeholder = { Text("Şifre Tekrar", color = Color.Gray) },
+                textStyle = TextStyle(color = LoginTextColor),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = RoundedCornerShape(28.dp),
+                visualTransformation = PasswordVisualTransformation(),
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = Color.White,
+                    unfocusedContainerColor = Color.White,
+                    disabledContainerColor = Color.White,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                    cursorColor = LoginTextColor
+                ),
+                singleLine = true
+            )
             
             Spacer(modifier = Modifier.height(24.dp))
             
@@ -199,10 +224,12 @@ fun LoginScreen(navController: NavController, tokenManager: TokenManager) {
             Button(
                 onClick = { 
                     validationError = null
-                    if (username.isBlank() || password.isBlank()) {
+                    if (username.isBlank() || password.isBlank() || confirmPassword.isBlank()) {
                         validationError = "Lütfen tüm alanları doldurunuz."
+                    } else if (password != confirmPassword) {
+                        validationError = "Şifreler birbiriyle eşleşmiyor."
                     } else {
-                        viewModel.login(username, password)
+                        viewModel.register(username, password)
                     }
                 },
                 modifier = Modifier
@@ -218,28 +245,19 @@ fun LoginScreen(navController: NavController, tokenManager: TokenManager) {
                 if (authState is Resource.Loading) {
                     CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
                 } else {
-                    Text("GİRİŞ YAP", color = Color.White, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    Text("KAYIT OL", color = Color.White, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                 }
             }
             
             Spacer(modifier = Modifier.height(24.dp))
             
-            Text(
-                text = "Şifremi Unuttum?",
-                color = LoginTextColor,
-                modifier = Modifier.clickable { navController.navigate("forgot_password") },
-                fontWeight = FontWeight.Medium
-            )
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
             Row {
-                Text(text = "Hesabın yok mu? ", color = LoginTextColor)
+                Text(text = "Zaten hesabın var mı? ", color = LoginTextColor)
                 Text(
-                    text = "Şimdi Kaydol",
+                    text = "Giriş Yap",
                     color = LoginTextColor,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clickable { navController.navigate("register") }
+                    modifier = Modifier.clickable { navController.popBackStack() }
                 )
             }
             
@@ -249,8 +267,8 @@ fun LoginScreen(navController: NavController, tokenManager: TokenManager) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.padding(bottom = 32.dp)
             ) {
-                Box(modifier = Modifier.size(8.dp).background(LoginButton.copy(alpha = 0.5f), CircleShape))
                 Box(modifier = Modifier.size(8.dp).background(LoginButton, CircleShape))
+                Box(modifier = Modifier.size(8.dp).background(LoginButton.copy(alpha = 0.5f), CircleShape))
                 Box(modifier = Modifier.size(8.dp).background(LoginButton.copy(alpha = 0.5f), CircleShape))
             }
         }

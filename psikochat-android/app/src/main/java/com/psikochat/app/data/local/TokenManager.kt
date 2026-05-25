@@ -11,8 +11,32 @@ import kotlinx.coroutines.flow.map
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
 class TokenManager(private val context: Context) {
-    companion object { val TOKEN_KEY = stringPreferencesKey("jwt_token") }
+    companion object {
+        val TOKEN_KEY = stringPreferencesKey("jwt_token")
+        val USERNAME_KEY = stringPreferencesKey("username")
+    }
+    
     fun getToken(): Flow<String?> = context.dataStore.data.map { it[TOKEN_KEY] }
-    suspend fun saveToken(token: String) { context.dataStore.edit { it[TOKEN_KEY] = token } }
-    suspend fun clearToken() { context.dataStore.edit { it.remove(TOKEN_KEY) } }
+    fun getUsername(): Flow<String> =
+    context.dataStore.data.map { it[USERNAME_KEY] ?: "Kullanıcı" }
+    
+    suspend fun saveAuthData(token: String, username: String) {
+        context.dataStore.edit { preferences ->
+            preferences[TOKEN_KEY] = token
+            preferences[USERNAME_KEY] = username
+        }
+    }
+    
+    suspend fun clearAuthData() {
+        context.dataStore.edit { preferences ->
+            preferences.remove(TOKEN_KEY)
+            preferences.remove(USERNAME_KEY)
+        }
+        try {
+            AppDatabase.getInstance(context).clearAllTables()
+        } catch (e: Exception) {
+            // Shield exceptions
+        }
+    }
+    
 }

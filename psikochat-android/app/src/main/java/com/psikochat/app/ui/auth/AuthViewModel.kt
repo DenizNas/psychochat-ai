@@ -12,12 +12,19 @@ class AuthViewModel(private val repository: AuthRepository, private val tokenMan
     private val _authState = MutableStateFlow<Resource<Boolean>>(Resource.Success(false))
     val authState: StateFlow<Resource<Boolean>> = _authState
     
-    fun login(username: String, pass: String) {
+    fun login(user: String, pass: String) {
+        if (user.isBlank() || pass.isBlank()) {
+            _authState.value = Resource.Error("Kullanıcı adı ve şifre boş bırakılamaz")
+            return
+        }
+        
         viewModelScope.launch {
             _authState.value = Resource.Loading()
-            when (val res = repository.login(username, pass)) {
+            when (val res = repository.login(user, pass)) {
                 is Resource.Success -> {
-                    res.data?.let { tokenManager.saveToken(it) }
+                    res.data?.let { 
+                        tokenManager.saveAuthData(it.access_token, it.username) 
+                    }
                     _authState.value = Resource.Success(true)
                 }
                 is Resource.Error -> _authState.value = Resource.Error(res.message ?: "Hata")
@@ -26,14 +33,30 @@ class AuthViewModel(private val repository: AuthRepository, private val tokenMan
         }
     }
     
-    fun register(username: String, pass: String) {
+    fun register(user: String, pass: String) {
+        if (user.isBlank() || pass.isBlank()) {
+            _authState.value = Resource.Error("Kullanıcı adı ve şifre boş bırakılamaz")
+            return
+        }
+        
         viewModelScope.launch {
             _authState.value = Resource.Loading()
-            when (val res = repository.register(username, pass)) {
-                is Resource.Success -> login(username, pass) // Oto login
+            when (val res = repository.register(user, pass)) {
+                is Resource.Success -> _authState.value = Resource.Success(true)
                 is Resource.Error -> _authState.value = Resource.Error(res.message ?: "Hata")
                 else -> {}
             }
+        }
+    }
+
+    fun resetState() {
+        _authState.value = Resource.Success(false)
+    }
+
+    fun logout() {
+        viewModelScope.launch {
+            tokenManager.clearAuthData()
+            resetState()
         }
     }
 }
