@@ -16,6 +16,6 @@ openai
 orjson
 seaborn
 python-multipart
-redis>=5.0.1
+redis>=8.0.0
 celery>=5.3.6
 prometheus-client>=0.19.0
