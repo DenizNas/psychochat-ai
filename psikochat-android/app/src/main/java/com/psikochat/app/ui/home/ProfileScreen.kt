@@ -278,7 +278,7 @@ fun ProfileScreen(navController: NavController, tokenManager: TokenManager) {
 
                         // Retrieve active streak dynamically from cached Room SQLite timestamps
                         val db = com.psikochat.app.data.local.AppDatabase.getInstance(LocalContext.current)
-                        val messagesFlow = remember(profile.username) { db.chatDao().getCachedMessages(profile.username) }
+                        val messagesFlow = remember(profile.username) { db.chatDao().getAllCachedMessages(profile.username) }
                         val messages by messagesFlow.collectAsState(initial = emptyList())
                         val moodsFlow = remember(profile.username) { db.moodJournalDao().getCachedMoodJournals(profile.username) }
                         val moods by moodsFlow.collectAsState(initial = emptyList())

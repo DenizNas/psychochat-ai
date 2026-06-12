@@ -11,7 +11,8 @@ data class CachedChatMessage(
     val text: String,
     val timestamp: String,
     val localId: String? = null, // unique local UUID to correlate with pending messages
-    val state: String = "synced"
+    val state: String = "synced",
+    val conversationId: String = ""
 )
 
 @Entity(tableName = "pending_chat_messages")
@@ -23,7 +24,8 @@ data class PendingChatMessage(
     val timestamp: String,
     val state: String = "pending", // "pending", "synced", "failed"
     val errorMessage: String? = null,
-    val idempotencyKey: String
+    val idempotencyKey: String,
+    val conversationId: String = ""
 )
 
 @Entity(tableName = "cached_mood_journals")

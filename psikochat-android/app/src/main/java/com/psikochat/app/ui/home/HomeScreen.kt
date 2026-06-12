@@ -53,7 +53,7 @@ fun HomeScreen(navController: NavController, tokenManager: TokenManager) {
     val api = RetrofitClient.create(tokenManager)
 
     // Dynamic database observations for streaks and achievements
-    val messagesFlow = remember(username) { db.chatDao().getCachedMessages(username) }
+    val messagesFlow = remember(username) { db.chatDao().getAllCachedMessages(username) }
     val messages by messagesFlow.collectAsState(initial = emptyList())
     val moodsFlow = remember(username) { db.moodJournalDao().getCachedMoodJournals(username) }
     val moods by moodsFlow.collectAsState(initial = emptyList())

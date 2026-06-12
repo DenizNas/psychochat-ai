@@ -75,7 +75,7 @@ class RealtimeWebSocketManager(
      * Sunucuya chat_message event'i gönder.
      * @return true → gönderildi; false → WS bağlı değil (REST fallback kullan)
      */
-    fun sendMessage(text: String, language: String = "tr"): Boolean {
+    fun sendMessage(text: String, language: String = "tr", conversationId: String): Boolean {
         val ws = webSocket ?: return false
         if (_connectionState.value !is ConnectionState.Connected) return false
 
@@ -84,6 +84,7 @@ class RealtimeWebSocketManager(
             put("payload", JSONObject().apply {
                 put("text", text)
                 put("language", language)
+                put("conversation_id", conversationId)
             })
         }
         // Mesaj içeriği loglanmaz

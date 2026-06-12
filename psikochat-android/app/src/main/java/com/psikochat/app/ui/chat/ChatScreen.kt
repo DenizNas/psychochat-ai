@@ -55,7 +55,7 @@ import androidx.compose.ui.platform.LocalContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen(navController: NavController, tokenManager: TokenManager, targetDate: String? = null) {
+fun ChatScreen(navController: NavController, tokenManager: TokenManager, conversationId: String? = null) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val db = com.psikochat.app.data.local.AppDatabase.getInstance(context)
     val syncManager = com.psikochat.app.data.sync.SyncManager.getInstance(context)
@@ -147,7 +147,7 @@ fun ChatScreen(navController: NavController, tokenManager: TokenManager, targetD
     }
 
     LaunchedEffect(Unit) {
-        viewModel.loadHistory()
+        viewModel.loadHistory(conversationId)
     }
 
     Scaffold(
@@ -163,7 +163,18 @@ fun ChatScreen(navController: NavController, tokenManager: TokenManager, targetD
                                 tint = LoginButton
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            val titleText = if (targetDate != null) "Geçmiş Sohbet ($targetDate)" else "PsikoChat"
+                            val titleText = remember(messages, conversationId) {
+                                if (conversationId != null) {
+                                    val firstMsg = messages.firstOrNull()
+                                    if (firstMsg != null) {
+                                        "Geçmiş Sohbet (${extractDateString(firstMsg.timestamp)})"
+                                    } else {
+                                        if (conversationId.length > 20) "Geçmiş Sohbet" else "Geçmiş Sohbet ($conversationId)"
+                                    }
+                                } else {
+                                    "PsikoChat"
+                                }
+                            }
                             Text(titleText, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = LoginTextColor)
                         }
                     },
@@ -258,13 +269,7 @@ fun ChatScreen(navController: NavController, tokenManager: TokenManager, targetD
                 }
             }
 
-            val filteredMessages = remember(messages, targetDate) {
-                if (targetDate != null) {
-                    messages.filter { extractDateString(it.timestamp) == targetDate }
-                } else {
-                    messages
-                }
-            }
+            val filteredMessages = messages
             val groupedMessages = remember(filteredMessages) {
                 filteredMessages.groupBy { extractDateString(it.timestamp) }
             }
@@ -366,7 +371,7 @@ fun ChatScreen(navController: NavController, tokenManager: TokenManager, targetD
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.clearVisibleMessages()
+                        viewModel.startNewChat()
                         showNewChatConfirm = false
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = DarkTealPrimary)

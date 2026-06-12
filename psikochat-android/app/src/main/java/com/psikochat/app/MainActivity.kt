@@ -149,10 +149,10 @@ class MainActivity : ComponentActivity() {
                             composable("settings") { SettingsScreen(navController, tokenManager) }
                             composable("therapy") { TherapyScreen(navController, tokenManager) }
                             composable("chat") { ChatScreen(navController, tokenManager) }
-                            composable("chat/{targetDate}") { backStackEntry ->
-                                val targetDate = backStackEntry.arguments?.getString("targetDate")
-                                val decodedDate = java.net.URLDecoder.decode(targetDate ?: "", java.nio.charset.StandardCharsets.UTF_8.toString())
-                                ChatScreen(navController, tokenManager, targetDate = decodedDate)
+                            composable("chat/{conversationId}") { backStackEntry ->
+                                val conversationId = backStackEntry.arguments?.getString("conversationId")
+                                val decodedId = java.net.URLDecoder.decode(conversationId ?: "", java.nio.charset.StandardCharsets.UTF_8.toString())
+                                ChatScreen(navController, tokenManager, conversationId = decodedId)
                             }
                             composable("chat_history") { com.psikochat.app.ui.chat.ChatHistoryScreen(navController, tokenManager) }
                             composable("wellness_schedule") { WellnessScheduleScreen(navController, tokenManager) }

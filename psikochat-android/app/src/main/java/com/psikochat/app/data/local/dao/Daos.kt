@@ -6,8 +6,14 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ChatDao {
+    @Query("SELECT * FROM cached_chat_messages WHERE userId = :userId AND conversationId = :conversationId ORDER BY id ASC")
+    fun getCachedMessages(userId: String, conversationId: String): Flow<List<CachedChatMessage>>
+
     @Query("SELECT * FROM cached_chat_messages WHERE userId = :userId ORDER BY id ASC")
-    fun getCachedMessages(userId: String): Flow<List<CachedChatMessage>>
+    fun getAllCachedMessages(userId: String): Flow<List<CachedChatMessage>>
+
+    @Query("SELECT * FROM cached_chat_messages WHERE userId = :userId")
+    suspend fun getAllCachedMessagesDirect(userId: String): List<CachedChatMessage>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCachedMessage(msg: CachedChatMessage): Long

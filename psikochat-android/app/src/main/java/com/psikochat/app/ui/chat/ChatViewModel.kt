@@ -26,6 +26,7 @@ import com.psikochat.app.data.repository.PrivacyRepository
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.Date
+import java.util.UUID
 
 class ChatViewModel(
     private val repository: ChatRepository,
@@ -38,6 +39,9 @@ class ChatViewModel(
     // ─── UI State Flows ────────────────────────────────────────────────────
     private val _messages = MutableStateFlow<List<HistoryItem>>(emptyList())
     val messages: StateFlow<List<HistoryItem>> = _messages
+
+    private val _activeConversationId = MutableStateFlow<String>("")
+    val activeConversationId: StateFlow<String> = _activeConversationId.asStateFlow()
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
@@ -167,7 +171,8 @@ class ChatViewModel(
 
         viewModelScope.launch {
             val username = tokenManager.getUsername().first()
-            repository.saveAssistantMessageLocally(username, event.response)
+            val activeId = _activeConversationId.value
+            repository.saveAssistantMessageLocally(username, event.response, conversationId = activeId)
             _isLoading.value = false
             _isAssistantTyping.value = false
         }
@@ -177,22 +182,23 @@ class ChatViewModel(
         }
     }
 
-    // ─── Chat History ──────────────────────────────────────────────────────
-    fun loadHistory() {
+    fun loadHistory(conversationId: String?) {
         viewModelScope.launch {
             _isLoading.value = true
             val username = tokenManager.getUsername().first()
             
-            // 1. Observe Room local database cache reactively (always responds instantly!)
+            val activeId = if (conversationId.isNullOrBlank()) {
+                UUID.randomUUID().toString()
+            } else {
+                conversationId
+            }
+            _activeConversationId.value = activeId
+            
+            // 1. Observe Room local database cache reactively filtered by activeConversationId
             historyCollectionJob?.cancel()
-            historyCollectionJob = repository.getCachedHistory(username)
+            historyCollectionJob = repository.getCachedHistory(username, activeId)
                 .onEach { list ->
-                    val filtered = if (clearTimeMillis > 0L) {
-                        list.filter { it.timestamp == null || parseTimestampToMillis(it.timestamp) >= clearTimeMillis }
-                    } else {
-                        list
-                    }
-                    _messages.value = filtered
+                    _messages.value = list
                 }
                 .launchIn(viewModelScope)
             
@@ -233,11 +239,12 @@ class ChatViewModel(
         val isWsConnected = wsManager.connectionState.value is ConnectionState.Connected
         viewModelScope.launch {
             val username = tokenManager.getUsername().first()
+            val activeId = _activeConversationId.value
             if (isWsConnected) {
                 _isLoading.value = true
 
                 // Save user message locally (Optimistically show as synced)
-                val localId = repository.saveUserMessageLocally(username, trimmed, state = "synced")
+                val localId = repository.saveUserMessageLocally(username, trimmed, state = "synced", conversationId = activeId)
 
                 // Register the active message BEFORE sendMessage() so handleChatResponse
                 // never sees a null activeMessageLocalId even if WS replies instantly.
@@ -260,7 +267,7 @@ class ChatViewModel(
                     }
                 }
 
-                val sent = wsManager.sendMessage(trimmed)
+                val sent = wsManager.sendMessage(trimmed, conversationId = activeId)
                 if (!sent) {
                     // WebSocket failed immediately: cancel safety timeout and fall back to REST
                     activeTimeoutJob?.cancel()
@@ -285,13 +292,15 @@ class ChatViewModel(
                 _isLoading.value = true
                 val username = tokenManager.getUsername().first()
                 val isOnline = syncManager.isOnline.value
+                val activeId = _activeConversationId.value
                 Log.d("ChatViewModel", "RESILIENT | isFallback=$isFallback | isOnline=$isOnline | localId=${localId?.take(8)}")
                 val res = repository.sendMessageResilient(
                     userId = username,
                     text = text,
                     isOnline = isOnline,
                     isFallback = isFallback,
-                    fallbackLocalId = localId
+                    fallbackLocalId = localId,
+                    conversationId = activeId
                 )
                 when (res) {
                     is Resource.Success -> Log.d("ChatViewModel", "RESILIENT | success | localId=${localId?.take(8)}")
@@ -367,10 +376,19 @@ class ChatViewModel(
         return 0L
     }
 
-    fun clearVisibleMessages() {
-        // Set clearTimeMillis to 1 second before now to prevent any second-boundary edge cases
-        clearTimeMillis = System.currentTimeMillis() - 1000L
-        _messages.value = emptyList()
+    fun startNewChat() {
+        viewModelScope.launch {
+            val username = tokenManager.getUsername().first()
+            val newId = UUID.randomUUID().toString()
+            _activeConversationId.value = newId
+            
+            historyCollectionJob?.cancel()
+            historyCollectionJob = repository.getCachedHistory(username, newId)
+                .onEach { list ->
+                    _messages.value = list
+                }
+                .launchIn(viewModelScope)
+        }
     }
 
     override fun onCleared() {

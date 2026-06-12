@@ -53,7 +53,7 @@ class OfflineSyncWorker(
             try {
                 Log.d("OfflineSyncWorker", "SYNC_JOB | chat pending | localId: ${chat.localId}")
                 val response = api.sendMessage(
-                    ChatRequest(text = chat.text, language = chat.language),
+                    ChatRequest(text = chat.text, language = chat.language, conversationId = chat.conversationId),
                     chat.idempotencyKey
                 )
                 
@@ -66,7 +66,8 @@ class OfflineSyncWorker(
                         role = "assistant",
                         text = response.response,
                         timestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(Date()),
-                        state = "synced"
+                        state = "synced",
+                        conversationId = chat.conversationId
                     )
                 )
                 

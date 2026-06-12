@@ -60,7 +60,7 @@ class ChatHistoryViewModel(
             val username = tokenManager.getUsername().first()
             
             // 1. Observe Room local database cache reactively (always responds instantly!)
-            repository.getCachedHistory(username)
+            repository.getAllCachedHistory(username)
                 .onEach { list ->
                     _messages.value = list
                 }
@@ -168,26 +168,27 @@ fun ChatHistoryScreen(navController: NavController, tokenManager: TokenManager) 
                     }
                 }
             } else {
-                // Group by date
+                // Group by conversationId
                 val grouped = remember(messages) {
-                    messages.groupBy { extractDateString(it.timestamp) }
+                    messages.groupBy { it.conversationId }
                 }
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     contentPadding = PaddingValues(top = 16.dp, bottom = 24.dp)
                 ) {
-                    items(grouped.keys.toList()) { dateKey ->
-                        val listForDate = grouped[dateKey] ?: emptyList()
+                    items(grouped.keys.toList()) { conversationId ->
+                        val listForDate = grouped[conversationId] ?: emptyList()
                         val lastMsg = listForDate.lastOrNull()?.text ?: ""
                         val msgCount = listForDate.size
+                        val displayDate = extractDateString(listForDate.firstOrNull()?.timestamp)
 
                         Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    val encodedDate = URLEncoder.encode(dateKey, StandardCharsets.UTF_8.toString())
-                                    navController.navigate("chat/$encodedDate")
+                                    val encodedId = URLEncoder.encode(conversationId, StandardCharsets.UTF_8.toString())
+                                    navController.navigate("chat/$encodedId")
                                 },
                             shape = RoundedCornerShape(20.dp),
                             color = PremiumWhiteCard,
@@ -220,7 +221,7 @@ fun ChatHistoryScreen(navController: NavController, tokenManager: TokenManager) 
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = dateKey,
+                                            text = displayDate,
                                             fontWeight = FontWeight.Bold,
                                             fontSize = 15.sp,
                                             color = LoginTextColor

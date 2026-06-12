@@ -62,7 +62,7 @@ fun WeeklyRecapScreen(
     val username by usernameFlow.collectAsState(initial = "")
 
     // ── Local data flows ─────────────────────────────────────────────────────
-    val messagesFlow = remember(username) { db.chatDao().getCachedMessages(username) }
+    val messagesFlow = remember(username) { db.chatDao().getAllCachedMessages(username) }
     val messages by messagesFlow.collectAsState(initial = emptyList())
 
     val moodsFlow = remember(username) { db.moodJournalDao().getCachedMoodJournals(username) }

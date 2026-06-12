@@ -24,20 +24,68 @@ class ChatRepository(
 ) {
 
     /**
-     * Exposes a reactive flow of cached messages mapped to UI HistoryItems.
+     * Exposes a reactive flow of cached messages filtered by conversationId mapped to UI HistoryItems.
      */
-    fun getCachedHistory(userId: String): Flow<List<HistoryItem>> {
-        return chatDao.getCachedMessages(userId).map { cachedList ->
+    fun getCachedHistory(userId: String, conversationId: String): Flow<List<HistoryItem>> {
+        return chatDao.getCachedMessages(userId, conversationId).map { cachedList ->
             cachedList.map {
                 HistoryItem(
                     id = it.id,
                     role = it.role,
                     text = it.text,
                     timestamp = it.timestamp,
-                    state = it.state
+                    state = it.state,
+                    conversationId = it.conversationId
                 )
             }
         }
+    }
+
+    /**
+     * Exposes all cached messages mapped to UI HistoryItems (for ChatHistoryScreen).
+     */
+    fun getAllCachedHistory(userId: String): Flow<List<HistoryItem>> {
+        return chatDao.getAllCachedMessages(userId).map { cachedList ->
+            cachedList.map {
+                HistoryItem(
+                    id = it.id,
+                    role = it.role,
+                    text = it.text,
+                    timestamp = it.timestamp,
+                    state = it.state,
+                    conversationId = it.conversationId
+                )
+            }
+        }
+    }
+
+    private fun extractDateString(timestamp: String?): String {
+        if (timestamp == null) return "Bugün"
+        val formats = listOf(
+            "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+            "yyyy-MM-dd'T'HH:mm:ss.SSS",
+            "yyyy-MM-dd'T'HH:mm:ss",
+            "yyyy-MM-dd HH:mm:ss",
+            "yyyy-MM-dd"
+        )
+        for (format in formats) {
+            try {
+                val sdf = SimpleDateFormat(format, Locale.getDefault())
+                if (format.endsWith("'Z'")) {
+                    sdf.timeZone = TimeZone.getTimeZone("UTC")
+                }
+                val date = sdf.parse(timestamp)
+                if (date != null) {
+                    val formatter = SimpleDateFormat("dd MMMM yyyy", Locale("tr", "TR"))
+                    val dateString = formatter.format(date)
+                    val todayString = formatter.format(Date())
+                    return if (dateString == todayString) "Bugün" else dateString
+                }
+            } catch (e: Exception) {
+                // try next format
+            }
+        }
+        return "Bilinmeyen Tarih"
     }
 
     /**
@@ -48,15 +96,23 @@ class ChatRepository(
     suspend fun refreshHistory(userId: String): Resource<List<HistoryItem>> {
         return try {
             val res = api.getHistory()
+            val existingList = chatDao.getAllCachedMessagesDirect(userId)
             // Delete only synced/failed rows — preserve pending ones so offline bubbles stay visible
             chatDao.clearNonPendingMessages(userId)
-            val dbEntities = res.map {
+            val dbEntities = res.map { historyItem ->
+                val matched = existingList.find { existing ->
+                    existing.role == historyItem.role &&
+                    existing.text == historyItem.text &&
+                    (existing.timestamp.take(10) == historyItem.timestamp?.take(10))
+                }
+                val conversationId = matched?.conversationId ?: extractDateString(historyItem.timestamp)
                 CachedChatMessage(
                     userId = userId,
-                    role = it.role,
-                    text = it.text,
-                    timestamp = it.timestamp ?: "",
-                    state = "synced"
+                    role = historyItem.role,
+                    text = historyItem.text,
+                    timestamp = historyItem.timestamp ?: "",
+                    state = "synced",
+                    conversationId = conversationId
                 )
             }
             chatDao.insertCachedMessages(dbEntities)
@@ -70,7 +126,7 @@ class ChatRepository(
     /**
      * Saves a user message to the local Room cache immediately.
      */
-    suspend fun saveUserMessageLocally(userId: String, text: String, state: String = "synced"): String {
+    suspend fun saveUserMessageLocally(userId: String, text: String, state: String = "synced", conversationId: String): String {
         val localId = UUID.randomUUID().toString()
         val timestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(Date())
         val userCachedMsg = CachedChatMessage(
@@ -79,7 +135,8 @@ class ChatRepository(
             text = text,
             timestamp = timestamp,
             localId = localId,
-            state = state
+            state = state,
+            conversationId = conversationId
         )
         val rowId = chatDao.insertCachedMessage(userCachedMsg)
         Log.d("ChatRepository", "SAVE_LOCAL | role=user | state=$state | localId=${localId.take(8)} | rowId=$rowId")
@@ -89,14 +146,15 @@ class ChatRepository(
     /**
      * Saves an assistant message to the local Room cache immediately.
      */
-    suspend fun saveAssistantMessageLocally(userId: String, text: String) {
+    suspend fun saveAssistantMessageLocally(userId: String, text: String, conversationId: String) {
         val timestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(Date())
         val assistantCachedMsg = CachedChatMessage(
             userId = userId,
             role = "assistant",
             text = text,
             timestamp = timestamp,
-            state = "synced"
+            state = "synced",
+            conversationId = conversationId
         )
         chatDao.insertCachedMessage(assistantCachedMsg)
     }
@@ -112,7 +170,8 @@ class ChatRepository(
         language: String = "tr",
         isOnline: Boolean,
         isFallback: Boolean = false,
-        fallbackLocalId: String? = null
+        fallbackLocalId: String? = null,
+        conversationId: String
     ): Resource<ChatResponse> {
         val localId = fallbackLocalId ?: UUID.randomUUID().toString()
         val idempotencyKey = UUID.randomUUID().toString()
@@ -125,7 +184,8 @@ class ChatRepository(
             text = text,
             timestamp = timestamp,
             localId = localId,
-            state = "pending"
+            state = "pending",
+            conversationId = conversationId
         )
         if (!isFallback) {
             // Save locally as pending first (Optimistic insertion)
@@ -139,7 +199,7 @@ class ChatRepository(
         if (isOnline) {
             return try {
                 val res = api.sendMessage(
-                    ChatRequest(text = text, language = language),
+                    ChatRequest(text = text, language = language, conversationId = conversationId),
                     idempotencyKey
                 )
                 
@@ -158,7 +218,8 @@ class ChatRepository(
                         role = "assistant",
                         text = res.response,
                         timestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(Date()),
-                        state = "synced"
+                        state = "synced",
+                        conversationId = conversationId
                     )
                 )
                 Resource.Success(res)
@@ -172,7 +233,8 @@ class ChatRepository(
                         language = language,
                         timestamp = timestamp,
                         state = "pending",
-                        idempotencyKey = idempotencyKey
+                        idempotencyKey = idempotencyKey,
+                        conversationId = conversationId
                     )
                     chatDao.insertPendingMessage(pendingMsg)
                     
@@ -203,7 +265,8 @@ class ChatRepository(
                 language = language,
                 timestamp = timestamp,
                 state = "pending",
-                idempotencyKey = idempotencyKey
+                idempotencyKey = idempotencyKey,
+                conversationId = conversationId
             )
             chatDao.insertPendingMessage(pendingMsg)
             if (isFallback) {

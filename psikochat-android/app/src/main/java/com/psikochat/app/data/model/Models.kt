@@ -22,7 +22,8 @@ data class RegisterResponse(
 )
 data class ChatRequest(
     @SerializedName("text") val text: String, 
-    @SerializedName("language") val language: String = "tr"
+    @SerializedName("language") val language: String = "tr",
+    @SerializedName("conversation_id") val conversationId: String? = null
 )
 data class ChatResponse(
     @SerializedName("emotion") val emotion: String, 
@@ -35,7 +36,8 @@ data class HistoryItem(
     @SerializedName("role") val role: String, 
     @SerializedName("text") val text: String,
     @SerializedName("timestamp") val timestamp: String? = null,
-    val state: String = "synced" // "synced", "pending", "failed"
+    val state: String = "synced", // "synced", "pending", "failed"
+    val conversationId: String = ""
 )
 
 data class ProfileResponse(

@@ -40,7 +40,7 @@ fun AchievementGalleryScreen(
     val username by usernameFlow.collectAsState(initial = "")
 
     // Observe all local Room flows
-    val messagesFlow = remember(username) { db.chatDao().getCachedMessages(username) }
+    val messagesFlow = remember(username) { db.chatDao().getAllCachedMessages(username) }
     val messages by messagesFlow.collectAsState(initial = emptyList())
 
     val moodsFlow = remember(username) { db.moodJournalDao().getCachedMoodJournals(username) }
