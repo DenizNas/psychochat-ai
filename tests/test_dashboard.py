@@ -2,6 +2,7 @@ import unittest
 from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 
+from decimal import Decimal
 from src.api.main import app, get_current_user
 from src.services.database import (
     init_db,
@@ -9,6 +10,9 @@ from src.services.database import (
     User,
     EmotionEvent,
     MoodJournal,
+    UserSubscription,
+    SubscriptionPlan,
+    SubscriptionStatus,
     save_emotion_event,
     save_mood_journal
 )
@@ -26,19 +30,43 @@ class TestWellnessDashboard(unittest.TestCase):
         # Reset DB tables
         db = SessionLocal()
         try:
+            db.query(UserSubscription).delete()
+            db.query(SubscriptionPlan).delete()
             db.query(EmotionEvent).delete()
             db.query(MoodJournal).delete()
             db.query(User).delete()
             
+            # Seed premium plan
+            premium_plan = SubscriptionPlan(
+                id=2,
+                name="premium",
+                price_lira=Decimal("199.99"),
+                billing_interval="monthly",
+                description="Premium",
+                is_active=True
+            )
+            db.add(premium_plan)
+            db.commit()
+            
             # Seed a default test user
             test_user = User(username="test_user", password_hash="dummy")
             db.add(test_user)
+            db.commit()
+
+            # Seed subscription
+            sub = UserSubscription(
+                user_id="test_user",
+                plan_id=2,
+                status=SubscriptionStatus.ACTIVE
+            )
+            db.add(sub)
             db.commit()
         except Exception as e:
             db.rollback()
             raise e
         finally:
             db.close()
+
 
     def test_empty_safe_insufficient_history(self):
         """Verify that less than 4 data points returns score: null with 'Yetersiz Veri' label."""

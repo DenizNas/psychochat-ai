@@ -36,3 +36,34 @@ def decode_access_token(token: str) -> Optional[dict]:
         return decoded_token
     except JWTError:
         return None
+
+import logging
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from src.core.security_config import security_config
+from src.core.token_blacklist import token_blacklist_core
+
+logger = logging.getLogger(__name__)
+security_jwt = HTTPBearer()
+
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security_jwt)) -> str:
+    token = credentials.credentials
+    
+    # 1. Blacklist Zırhı (Config üzerinden yönetilir)
+    if security_config.TOKEN_BLACKLIST_ENABLED:
+        if token_blacklist_core.is_blacklisted(token):
+            logger.error(f"Blacklisted token reuse attempt! Token signature: {token[:15]}...")
+            raise HTTPException(status_code=401, detail="Oturumunuz kapatılmış. Lütfen tekrar giriş yapın.")
+    
+    # 2. Native Validation
+    payload = decode_access_token(token)
+    if not payload:
+        logger.warning(f"Invalid token use attempt! Token signature: {token[:15]}...")
+        raise HTTPException(status_code=401, detail="Geçersiz token.")
+    
+    username = payload.get("sub")
+    if not username:
+        logger.warning("Token parsed but missing 'sub' identifier.")
+        raise HTTPException(status_code=401, detail="Token hatası.")
+    return username
+

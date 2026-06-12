@@ -41,7 +41,13 @@ class RecommendationRepository(private val api: PsikoApi) {
             Resource.Success(recs)
         } catch (e: HttpException) {
             Log.e(TAG, "GET recommendations HTTP error: ${e.code()}")
-            Resource.Error("Öneriler alınamadı (${e.code()})")
+            val isPremium = try {
+                val errorBody = e.response()?.errorBody()?.string()
+                errorBody?.contains("PREMIUM_MEMBER_REQUIRED") == true
+            } catch (ex: Exception) {
+                false
+            }
+            Resource.Error("Öneriler alınamadı (${e.code()})", isPremiumRequired = isPremium || e.code() == 403)
         } catch (e: IOException) {
             Log.e(TAG, "GET recommendations network error: ${e.message}")
             Resource.Error("Sunucuya bağlanılamadı.")
@@ -63,7 +69,13 @@ class RecommendationRepository(private val api: PsikoApi) {
             Resource.Success(response)
         } catch (e: HttpException) {
             Log.e(TAG, "Refresh recommendations HTTP error: ${e.code()}")
-            Resource.Error("Öneriler yenilenemedi (${e.code()})")
+            val isPremium = try {
+                val errorBody = e.response()?.errorBody()?.string()
+                errorBody?.contains("PREMIUM_MEMBER_REQUIRED") == true
+            } catch (ex: Exception) {
+                false
+            }
+            Resource.Error("Öneriler yenilenemedi (${e.code()})", isPremiumRequired = isPremium || e.code() == 403)
         } catch (e: IOException) {
             Log.e(TAG, "Refresh recommendations network error: ${e.message}")
             Resource.Error("Sunucuya bağlanılamadı.")

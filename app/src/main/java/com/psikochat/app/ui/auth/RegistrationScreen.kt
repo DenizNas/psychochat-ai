@@ -51,7 +51,13 @@ fun RegistrationScreen(navController: NavController, tokenManager: TokenManager)
     if (authState is Resource.Success && (authState.data == true)) {
         LaunchedEffect(Unit) {
             viewModel.resetState()
-            navController.navigate("login") { popUpTo("register") { inclusive = true } }
+            navController.navigate("main_graph") {
+
+                popUpTo("auth_graph") { inclusive = true }
+
+                launchSingleTop = true
+
+            }
         }
     }
 

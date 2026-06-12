@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,7 +16,10 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.pulltorefresh.*
 
 import androidx.compose.runtime.*
@@ -50,6 +54,21 @@ fun WellnessScheduleScreen(navController: NavController, tokenManager: TokenMana
         }
     }
     val viewModel: WellnessScheduleViewModel = viewModel(factory = factory)
+
+    // Appointment ViewModel Integration
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val db = com.psikochat.app.data.local.AppDatabase.getInstance(context)
+    val appointmentRepository = com.psikochat.app.data.repository.AppointmentRepository(db.appointmentDao())
+    val apptFactory = object : ViewModelProvider.Factory {
+        @Suppress("UNCHECKED_CAST")
+        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+            return AppointmentViewModel(appointmentRepository) as T
+        }
+    }
+    val apptViewModel: AppointmentViewModel = viewModel(factory = apptFactory)
+    val allAppointments by apptViewModel.allAppointments.collectAsState()
+
+    var selectedTab by remember { mutableStateOf(0) }
 
     val scheduleState by viewModel.scheduleState.collectAsState()
     val refreshState by viewModel.refreshState.collectAsState()
@@ -160,84 +179,174 @@ fun WellnessScheduleScreen(navController: NavController, tokenManager: TokenMana
                 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                when (scheduleState) {
-                    is Resource.Loading -> {
-                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = LoginButton)
-                        }
-                    }
-                    is Resource.Error -> {
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            Icon(Icons.Default.Warning, contentDescription = null, tint = DangerRed, modifier = Modifier.size(48.dp))
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                scheduleState.message ?: "Program yüklenemedi",
-                                textAlign = TextAlign.Center,
-                                color = LoginTextColor
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Button(
-                                onClick = { viewModel.loadSchedule() },
-                                colors = ButtonDefaults.buttonColors(containerColor = LoginButton)
-                            ) {
-                                Text("Tekrar Dene")
+                TabRow(
+                    selectedTabIndex = selectedTab,
+                    containerColor = Color.Transparent,
+                    contentColor = DarkTealPrimary,
+                    indicator = { tabPositions ->
+                        TabRowDefaults.SecondaryIndicator(
+                            modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                            color = DarkTealPrimary
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                ) {
+                    Tab(
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0 },
+                        text = { Text("Wellness Planım", fontWeight = FontWeight.Bold, fontSize = 14.sp) }
+                    )
+                    Tab(
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1 },
+                        text = { Text("Randevularım", fontWeight = FontWeight.Bold, fontSize = 14.sp) }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                if (selectedTab == 0) {
+                    when (scheduleState) {
+                        is Resource.Loading -> {
+                            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(color = LoginButton)
                             }
                         }
-                    }
-                    is Resource.Success -> {
-                        val items = scheduleState.data ?: emptyList()
-                        if (items.isEmpty()) {
-                            // Empty State
+                        is Resource.Error -> {
                             Column(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .padding(32.dp),
+                                    .padding(24.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center
                             ) {
-                                Surface(
-                                    modifier = Modifier.size(80.dp),
-                                    shape = CircleShape,
-                                    color = Color.White.copy(alpha = 0.5f)
+                                Icon(Icons.Default.Warning, contentDescription = null, tint = DangerRed, modifier = Modifier.size(48.dp))
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    scheduleState.message ?: "Program yüklenemedi",
+                                    textAlign = TextAlign.Center,
+                                    color = LoginTextColor
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Button(
+                                    onClick = { viewModel.loadSchedule() },
+                                    colors = ButtonDefaults.buttonColors(containerColor = LoginButton)
                                 ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(Icons.Default.Info, contentDescription = null, tint = LoginButton, modifier = Modifier.size(40.dp))
+                                    Text("Tekrar Dene")
+                                }
+                            }
+                        }
+                        is Resource.Success -> {
+                            val items = scheduleState.data ?: emptyList()
+                            if (items.isEmpty()) {
+                                // Empty State
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(32.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Surface(
+                                        modifier = Modifier.size(80.dp),
+                                        shape = CircleShape,
+                                        color = Color.White.copy(alpha = 0.5f)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(Icons.Default.Info, contentDescription = null, tint = LoginButton, modifier = Modifier.size(40.dp))
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(24.dp))
+                                    Text(
+                                        "Şu an planlanmış wellness önerisi bulunmuyor.",
+                                        textAlign = TextAlign.Center,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = LoginSecondaryText
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        "Duygu geçmişinize veya gün içindeki durumunuza göre wellness planınız otomatik olarak şekillenecektir.",
+                                        textAlign = TextAlign.Center,
+                                        fontSize = 12.sp,
+                                        color = LoginSecondaryText.copy(alpha = 0.8f)
+                                    )
+                                }
+                            } else {
+                                // Sorted Chronological List
+                                LazyColumn(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                                    contentPadding = PaddingValues(bottom = 24.dp)
+                                ) {
+                                    items(items, key = { item -> item.title + "_" + item.scheduledFor }) { item ->
+                                        InterventionCard(item = item, onClick = { selectedIntervention = item })
                                     }
                                 }
-                                Spacer(modifier = Modifier.height(24.dp))
-                                Text(
-                                    "Şu an planlanmış wellness önerisi bulunmuyor.",
-                                    textAlign = TextAlign.Center,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = LoginSecondaryText
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    "Duygu geçmişinize veya gün içindeki durumunuza göre wellness planınız otomatik olarak şekillenecektir.",
-                                    textAlign = TextAlign.Center,
-                                    fontSize = 12.sp,
-                                    color = LoginSecondaryText.copy(alpha = 0.8f)
-                                )
                             }
-                        } else {
-                            // Sorted Chronological List
-                            LazyColumn(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(16.dp),
-                                contentPadding = PaddingValues(bottom = 24.dp)
+                        }
+                    }
+                } else {
+                    if (allAppointments.isEmpty()) {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Surface(
+                                modifier = Modifier.size(80.dp),
+                                shape = CircleShape,
+                                color = Color.White.copy(alpha = 0.5f)
                             ) {
-                                items(items, key = { it.title + "_" + it.scheduledFor }) { item ->
-                                    InterventionCard(item = item, onClick = { selectedIntervention = item })
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Default.DateRange, contentDescription = null, tint = DarkTealPrimary, modifier = Modifier.size(40.dp))
                                 }
+                            }
+                            Spacer(modifier = Modifier.height(24.dp))
+                            Text(
+                                "Şu an planlanmış bir uzman randevunuz bulunmuyor.",
+                                textAlign = TextAlign.Center,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = LoginSecondaryText
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                "Destek sayfamızdan dilediğiniz uzman psikologla randevu planlayabilirsiniz.",
+                                textAlign = TextAlign.Center,
+                                fontSize = 12.sp,
+                                color = LoginSecondaryText.copy(alpha = 0.8f)
+                            )
+                            Spacer(modifier = Modifier.height(24.dp))
+                            // Premium button that navigates directly to therapy route
+                            com.psikochat.app.ui.components.PremiumButton(
+                                onClick = { navController.navigate("therapy") },
+                                cornerRadius = 16.dp,
+                                height = 48.dp,
+                                modifier = Modifier.fillMaxWidth(0.7f)
+                            ) {
+                                Text("Psikolog Bul", color = Color.White)
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                            contentPadding = PaddingValues(bottom = 24.dp)
+                        ) {
+                            items(allAppointments, key = { it.id }) { appointment ->
+                                AppointmentCard(
+                                    appt = appointment,
+                                    onCancel = {
+                                        apptViewModel.cancelAppointment(appointment.id)
+                                    }
+                                )
                             }
                         }
                     }
@@ -392,6 +501,96 @@ fun InterventionCard(item: ScheduledIntervention, onClick: () -> Unit) {
                     color = LoginSecondaryText,
                     maxLines = 1
                 )
+            }
+        }
+    }
+}
+
+// TODO: Replace local appointment storage with backend appointment API when available.
+@Composable
+fun AppointmentCard(appt: com.psikochat.app.data.local.entity.CachedAppointment, onCancel: () -> Unit) {
+    val isCancelled = appt.status == "cancelled"
+    val cardColor = if (isCancelled) Color(0xFFFEE2E2) else Color.White
+    val borderStrokeColor = if (isCancelled) Color(0xFFFECACA) else SoftMintAccent.copy(alpha = 0.5f)
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = cardColor,
+        border = BorderStroke(1.dp, borderStrokeColor),
+        shadowElevation = 1.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(if (isCancelled) Color.White else SoftMintAccent.copy(alpha = 0.6f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (isCancelled) Icons.Default.Close else Icons.Default.DateRange,
+                    contentDescription = null,
+                    tint = if (isCancelled) DangerRed else DarkTealPrimary,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = appt.psychologistName,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = LoginTextColor
+                    )
+                    
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isCancelled) Color(0xFFFCA5A5).copy(alpha = 0.3f) else SoftMintAccent
+                    ) {
+                        Text(
+                            text = if (isCancelled) "İptal Edildi" else "Planlandı",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isCancelled) DangerRed else DarkTealPrimary,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+                Text(
+                    text = "Uzmanlık Alanı: ${appt.psychologistSpecialty}",
+                    fontSize = 11.sp,
+                    color = LoginSecondaryText
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Tarih: ${appt.appointmentDate} Saat: ${appt.appointmentTime}",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = DarkTealPrimary
+                )
+                
+                if (!isCancelled) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = onCancel,
+                        modifier = Modifier.height(36.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Color(0xFFDC2626)),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFDC2626)),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp)
+                    ) {
+                        Text("Randevuyu İptal Et", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
         }
     }

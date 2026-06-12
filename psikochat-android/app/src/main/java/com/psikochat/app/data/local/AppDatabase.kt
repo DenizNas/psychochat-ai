@@ -15,9 +15,11 @@ import com.psikochat.app.data.local.entity.*
         PendingMoodJournal::class,
         CachedDashboard::class,
         CachedReport::class,
-        SyncEventEntity::class
+        SyncEventEntity::class,
+        CachedAppointment::class,
+        ScoreSnapshot::class
     ],
-    version = 1,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -27,6 +29,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun dashboardDao(): DashboardDao
     abstract fun reportDao(): ReportDao
     abstract fun syncEventDao(): SyncEventDao
+    abstract fun appointmentDao(): AppointmentDao
+    abstract fun scoreSnapshotDao(): ScoreSnapshotDao
 
     companion object {
         @Volatile

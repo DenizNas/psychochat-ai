@@ -30,6 +30,8 @@ import com.psikochat.app.ui.home.PrivacyDataScreen
 import com.psikochat.app.ui.home.RecommendationScreen
 import com.psikochat.app.ui.chat.ChatScreen
 
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import com.psikochat.app.ui.theme.PsikochatTheme
 import com.psikochat.app.data.local.TokenManager
 import com.psikochat.app.ui.notification.NotificationHelper
@@ -68,7 +70,8 @@ class MainActivity : ComponentActivity() {
 
         val tokenManager = TokenManager(this)
         setContent {
-            PsikochatTheme {
+            val themePreference by tokenManager.getTheme().collectAsState(initial = "system")
+            PsikochatTheme(themePreference = themePreference) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background

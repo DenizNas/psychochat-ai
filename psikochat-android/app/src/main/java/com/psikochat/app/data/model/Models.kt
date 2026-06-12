@@ -2,17 +2,20 @@ package com.psikochat.app.data.model
 import com.google.gson.annotations.SerializedName
 
 data class LoginRequest(
-    @SerializedName("username") val username: String,
+    @SerializedName("email") val email: String,
     @SerializedName("password") val password: String
 )
 data class RegisterRequest(
-    @SerializedName("username") val username: String,
+    @SerializedName("full_name") val fullName: String,
+    @SerializedName("email") val email: String,
     @SerializedName("password") val password: String
 )
 data class AuthResponse(
     @SerializedName("access_token") val access_token: String,
     @SerializedName("token_type") val token_type: String,
-    @SerializedName("username") val username: String
+    @SerializedName("username") val username: String,
+    @SerializedName("email") val email: String? = null,
+    @SerializedName("full_name") val fullName: String? = null
 )
 data class RegisterResponse(
     @SerializedName("message") val message: String
@@ -47,7 +50,9 @@ data class ProfileResponse(
     @SerializedName("privacy_mode") val privacyMode: Boolean,
     @SerializedName("answer_length_preference") val answerLengthPreference: String,
     @SerializedName("created_at") val createdAt: String,
-    @SerializedName("updated_at") val updatedAt: String
+    @SerializedName("updated_at") val updatedAt: String,
+    @SerializedName("email") val email: String? = null,
+    @SerializedName("full_name") val fullName: String? = null
 )
 
 data class UpdateProfileRequest(
@@ -115,8 +120,8 @@ data class NotificationEvent(
 
 sealed class Resource<T>(val data: T? = null, val message: String? = null) {
     class Success<T>(data: T) : Resource<T>(data)
-    class Error<T>(message: String, data: T? = null) : Resource<T>(data, message)
-    class Loading<T> : Resource<T>()
+    class Error<T>(message: String, data: T? = null, val isPremiumRequired: Boolean = false) : Resource<T>(data, message)
+    class Loading<T>(data: T? = null) : Resource<T>(data)
 }
 
 data class BehavioralInsight(
@@ -254,3 +259,39 @@ data class RecommendationRefreshResponse(
 data class RecommendationFeedbackRequest(
     @SerializedName("feedback") val feedback: String  // "helpful" | "not_helpful" | "dismissed"
 )
+
+data class SubscriptionPlanDto(
+    @SerializedName("id") val id: String,
+    @SerializedName("name") val name: String,
+    @SerializedName("price_lira") val price_lira: Double,
+    @SerializedName("billing_interval") val billing_interval: String,
+    @SerializedName("description") val description: String,
+    @SerializedName("is_active") val is_active: Boolean
+)
+
+data class SubscriptionStatusDto(
+    @SerializedName("has_premium") val has_premium: Boolean,
+    @SerializedName("plan_name") val plan_name: String?,
+    @SerializedName("status") val status: String?,
+    @SerializedName("current_period_end") val current_period_end: String?,
+    @SerializedName("cancel_at_period_end") val cancel_at_period_end: Boolean?
+)
+
+data class CheckoutRequestDto(
+    @SerializedName("plan_id") val plan_id: String
+)
+
+data class CheckoutResponseDto(
+    @SerializedName("checkout_url") val checkout_url: String,
+    @SerializedName("transaction_id") val transaction_id: String,
+    @SerializedName("status") val status: String
+)
+
+data class PaymentHistoryDto(
+    @SerializedName("transaction_id") val transaction_id: String,
+    @SerializedName("amount") val amount: Double,
+    @SerializedName("currency") val currency: String,
+    @SerializedName("status") val status: String,
+    @SerializedName("created_at") val created_at: String
+)
+

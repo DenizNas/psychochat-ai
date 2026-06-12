@@ -5,7 +5,7 @@ import openai
 from src.core.config import settings
 
 from src.response_engine.models import EngineConfig, EngineInput, EngineOutput
-from src.response_engine.prompts import build_system_prompt, build_user_prompt, PROMPT_VERSION
+from src.response_engine.prompts import build_system_prompt, build_user_prompt, PROMPT_VERSION, build_retry_quality_instruction
 from src.response_engine.context_builder import build_messages
 from src.response_engine.safety import (
     check_safety, get_crisis_safe_response, log_safety_event,
@@ -15,8 +15,9 @@ from src.response_engine.response_formatter import format_response
 from src.response_engine.memory_manager import process_memory          # backward-compat kept
 from src.response_engine.personal_context_engine import process_turn as pce_process_turn
 from src.response_engine.response_ranker import score_response, RankResult, NORMAL_THRESHOLD, CRISIS_THRESHOLD
-from src.services.database import save_chat_message
+from src.services.database import save_chat_message, get_or_create_profile
 from src.ai_providers import ai_orchestrator
+from src.ai_providers.local_provider import sanitize_memory_inlay
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +73,8 @@ class ResponseEngine:
             emotion=engine_input.emotion,
             risk=engine_input.risk,
             memory_context=memory_context_str,
-            preferences=engine_input.preferences.model_dump() if hasattr(engine_input.preferences, "model_dump") else engine_input.preferences.dict()
+            preferences=engine_input.preferences.model_dump() if hasattr(engine_input.preferences, "model_dump") else engine_input.preferences.dict(),
+            text=engine_input.text
         )
         user_prompt = build_user_prompt(
             text=engine_input.text,
@@ -218,12 +220,46 @@ class ResponseEngine:
             except Exception as audit_err:
                 logger.error(f"Failed to log crisis bypass audit log: {audit_err}")
         else:
+            # Build safe memory inlays if not in crisis and privacy mode is disabled
+            safe_memory_inlays = {}
+            if not is_crisis and not engine_input.preferences.privacy_mode:
+                try:
+                    from src.response_engine.memory_profile import load_profile
+                    profile = load_profile(engine_input.user_id)
+                    db_profile = get_or_create_profile(engine_input.user_id)
+                    
+                    display_name = db_profile.get("display_name") or db_profile.get("full_name") or ""
+                    
+                    stressors = profile.get("stressors", [])
+                    goals = profile.get("goals", [])
+                    emotions = profile.get("recurring_emotions", [])
+                    advice_topics = profile.get("last_advice_topics", [])
+                    
+                    active_stressor = stressors[-1] if stressors else ""
+                    current_goal = goals[-1] if goals else ""
+                    recent_emotion = emotions[-1] if emotions else ""
+                    last_advice_topic = advice_topics[-1] if advice_topics else ""
+                    
+                    safe_memory_inlays = {
+                        "display_name": sanitize_memory_inlay(display_name),
+                        "active_stressor": sanitize_memory_inlay(active_stressor),
+                        "current_goal": sanitize_memory_inlay(current_goal),
+                        "recent_emotion": sanitize_memory_inlay(recent_emotion),
+                        "last_advice_topic": sanitize_memory_inlay(last_advice_topic)
+                    }
+                except Exception as inlay_err:
+                    logger.error(f"ENGINE | Failed to build safe memory inlays: {inlay_err}")
+
             # Normal turns: route via multi-provider Orchestrator
             model_config = {
                 "model": self.config.primary_model,
                 "temperature": self.config.temperature,
                 "max_tokens": self.config.max_tokens,
-                "timeout_seconds": self.config.timeout_seconds
+                "timeout_seconds": self.config.timeout_seconds,
+                "counseling_category": prompt_meta.get("counseling_category", "neutral"),
+                "answer_length_preference": engine_input.preferences.answer_length_preference,
+                "response_style": engine_input.preferences.response_style,
+                "safe_memory_inlays": safe_memory_inlays,
             }
             
             # OpenAI is bypassed/minimalized in privacy mode
@@ -252,8 +288,78 @@ class ResponseEngine:
                 primary_model_used = orch_res.model
                 fallback_model_used = None
 
+            # Extract recent assistant responses from the message history to check advice repetitions
+            recent_responses = [msg["content"] for msg in messages if msg["role"] == "assistant"]
+
             # Response ranker check
-            rank_result = score_response(final_text, emotion=engine_input.emotion, risk=engine_input.risk)
+            rank_result = score_response(
+                final_text,
+                emotion=engine_input.emotion,
+                risk=engine_input.risk,
+                user_id=engine_input.user_id,
+                recent_responses=recent_responses
+            )
+
+            # If it fails ranker, try to regenerate exactly once (limit 1 retry) if primary provider was used and not local fallback
+            if not rank_result.passes and orch_res.provider != "local":
+                logger.warning(
+                    "ENGINE | Orchestrator response failed ranker quality check. Attempting exactly 1 regeneration (retry) with calibrated prompt. UserID: %s, Score: %.4f",
+                    engine_input.user_id, rank_result.score
+                )
+                retry_count += 1
+
+                # Calibrate retry instructions based on ranker failure reasons
+                retry_instr = build_retry_quality_instruction(rank_result.reasons)
+
+                # Re-build system prompt and messages with the quality instructions
+                retry_system_prompt, _ = build_system_prompt(
+                    language=engine_input.language,
+                    emotion=engine_input.emotion,
+                    risk=engine_input.risk,
+                    memory_context=memory_context_str,
+                    preferences=engine_input.preferences.model_dump() if hasattr(engine_input.preferences, "model_dump") else engine_input.preferences.dict(),
+                    text=engine_input.text,
+                    retry_instruction=retry_instr
+                )
+
+                retry_messages = build_messages(
+                    user_id=engine_input.user_id,
+                    system_prompt=retry_system_prompt,
+                    user_prompt=user_prompt,
+                    limit=self.config.max_memory_length,
+                    emotion=engine_input.emotion,
+                    risk=engine_input.risk,
+                )
+
+                orch_res = ai_orchestrator.generate_response(
+                    messages=retry_messages,
+                    model_config=model_config,
+                    bypass_openai=engine_input.preferences.privacy_mode
+                )
+                final_text = orch_res.text
+                ai_provider = orch_res.provider
+                ai_model = orch_res.model
+                ai_latency_ms += orch_res.latency_ms
+                ai_fallback_used = orch_res.fallback_used
+                ai_cost_estimate += orch_res.cost_estimate
+                is_fallback = orch_res.fallback_used
+                final_model = orch_res.model
+                if orch_res.fallback_used:
+                    fallback_reason = orch_res.error or "primary_failed"
+                    fallback_model_used = orch_res.model
+                else:
+                    primary_model_used = orch_res.model
+                    fallback_model_used = None
+
+                rank_result = score_response(
+                    final_text,
+                    emotion=engine_input.emotion,
+                    risk=engine_input.risk,
+                    user_id=engine_input.user_id,
+                    recent_responses=recent_responses
+                )
+
+            # Fall back to local provider if still failing the rank check
             if not rank_result.passes:
                 logger.warning(
                     "ENGINE | Orchestrator response failed ranker quality check (UserID: %s, Score: %.4f). Switching to local fallback.",
@@ -312,6 +418,14 @@ class ResponseEngine:
         # 5. Formatter
         final_text = format_response(final_text)
 
+        # [NEW] Scan response to track advice topics for repetition prevention (only on safe turns)
+        if is_safe:
+            try:
+                from src.response_engine.memory_profile import detect_and_add_advice_topics
+                detect_and_add_advice_topics(engine_input.user_id, final_text)
+            except Exception as advice_err:
+                logger.error(f"ENGINE | Failed to detect and track advice topics: {advice_err}")
+
         # 6. Database Integration
         try:
             save_chat_message(engine_input.user_id, "user", engine_input.text)
@@ -331,7 +445,7 @@ class ResponseEngine:
             "memory_filtered_privacy: %d | memory_filtered_crisis: %d | "
             "memory_lookup_latency: %.4fs | "
             "prompt_version: %s | prompt_sections: %s | prompt_length: %d | injection_guard_enabled: %s | "
-            "pref_style: %s | pref_len: %s | pref_privacy: %s",
+            "pref_style: %s | pref_len: %s | pref_privacy: %s | counseling_category: %s",
             engine_input.user_id,
             latency,
             final_model,
@@ -355,7 +469,8 @@ class ResponseEngine:
             prompt_meta.get("injection_guard_enabled", True),
             engine_input.preferences.response_style,
             engine_input.preferences.answer_length_preference,
-            engine_input.preferences.privacy_mode
+            engine_input.preferences.privacy_mode,
+            prompt_meta.get("counseling_category", "neutral")
         )
         
         return EngineOutput(
@@ -365,6 +480,7 @@ class ResponseEngine:
                 "latency_sec": latency,
                 "final_model": final_model,
                 "error": error_meta,
+                "counseling_category": prompt_meta.get("counseling_category", "neutral"),
                 "ranking": {
                     "primary_model_used": primary_model_used,
                     "fallback_model_used": fallback_model_used,

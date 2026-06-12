@@ -449,7 +449,8 @@ fun MemoryItemRow(memory: UserMemory, onDelete: () -> Unit) {
     }
 }
 
-private fun getCategoryMeta(type: String): Pair<ImageVector, Color> {
+@Composable
+fun getCategoryMeta(type: String): Pair<ImageVector, Color> {
     return when (type) {
         "preference" -> Icons.Default.ThumbUp to LoginButton
         "coping_strategy" -> Icons.Default.Favorite to Color(0xFFE91E63)

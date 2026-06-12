@@ -3,6 +3,7 @@ package com.psikochat.app.ui.home
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -39,6 +40,7 @@ import com.psikochat.app.data.model.Resource
 import com.psikochat.app.data.model.WellnessDashboardResponse
 import com.psikochat.app.data.repository.WellnessDashboardRepository
 import com.psikochat.app.ui.theme.*
+import com.psikochat.app.ui.components.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,10 +53,11 @@ fun WellnessDashboardScreen(
     val syncManager = com.psikochat.app.data.sync.SyncManager.getInstance(context)
     val api = RetrofitClient.create(tokenManager)
     val repository = WellnessDashboardRepository(api, db.dashboardDao())
+    val progressRepository = com.psikochat.app.data.repository.ProgressRepository(db.scoreSnapshotDao())
     val factory = object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return WellnessDashboardViewModel(repository, tokenManager, syncManager) as T
+            return WellnessDashboardViewModel(repository, tokenManager, syncManager, progressRepository) as T
         }
     }
     val viewModel: WellnessDashboardViewModel = viewModel(factory = factory)
@@ -62,6 +65,14 @@ fun WellnessDashboardScreen(
     val dashboardState by viewModel.dashboardState.collectAsState()
     val selectedDays by viewModel.selectedDays.collectAsState()
     val scrollState = rememberScrollState()
+
+    val usernameFlow = remember { tokenManager.getUsername() }
+    val username by usernameFlow.collectAsState(initial = "")
+
+    val messagesFlow = remember(username) { db.chatDao().getCachedMessages(username) }
+    val messages by messagesFlow.collectAsState(initial = emptyList())
+    val moodsFlow = remember(username) { db.moodJournalDao().getCachedMoodJournals(username) }
+    val moods by moodsFlow.collectAsState(initial = emptyList())
 
     Scaffold(
         topBar = {
@@ -93,6 +104,7 @@ fun WellnessDashboardScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .verticalScroll(scrollState)
                 .padding(horizontal = 20.dp)
         ) {
             Spacer(modifier = Modifier.height(8.dp))
@@ -146,48 +158,195 @@ fun WellnessDashboardScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
-            // 2. Main content Box with Stateflow
+            // 2. İstikrar Takibi — Always visible, calculated purely from local Room data
+            val streakSummary = remember(messages, moods) {
+                StreakEngine.computeStreakSummary(messages, moods)
+            }
+
+            Text(
+                "İstikrar Takibi",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = LoginTextColor,
+                modifier = Modifier.padding(start = 4.dp, bottom = 12.dp)
+            )
+
+            // Encouragement / Active Streak Banner
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = PremiumWhiteCard,
+                border = BorderStroke(1.dp, SoftMintAccent.copy(alpha = 0.5f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(SoftMintLight),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (streakSummary.activeStreakDays == 0) "✨" else "🔥",
+                            fontSize = 20.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column {
+                        Text(
+                            text = streakSummary.label,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = LoginTextColor
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = streakSummary.encouragementText,
+                            fontSize = 12.sp,
+                            color = LoginSecondaryText,
+                            lineHeight = 17.sp
+                        )
+                    }
+                }
+            }
+
+            // 2×2 Streak Cards Grid
+            Row(modifier = Modifier.fillMaxWidth()) {
+                StreakStatCard(
+                    title = "Günlük Seri",
+                    value = streakSummary.activeStreakDays.toString(),
+                    subtitle = "Aktif kullanım",
+                    badge = "🔥",
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                StreakStatCard(
+                    title = "Sohbet Serisi",
+                    value = streakSummary.chatStreakDays.toString(),
+                    subtitle = "AI terapist",
+                    badge = "💬",
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(modifier = Modifier.fillMaxWidth()) {
+                StreakStatCard(
+                    title = "Ruh Hali Serisi",
+                    value = streakSummary.moodStreakDays.toString(),
+                    subtitle = "Duygu günlüğü",
+                    badge = "📝",
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                StreakStatCard(
+                    title = "En Uzun Seri",
+                    value = streakSummary.longestStreakDays.toString(),
+                    subtitle = "Kişisel rekor",
+                    badge = "🏆",
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Weekly Recap Banner — navigates to weekly_recap
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { navController.navigate("weekly_recap") },
+                shape = RoundedCornerShape(20.dp),
+                color = DarkTealPrimary,
+                shadowElevation = 2.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column {
+                        Text(
+                            text = "Haftalık Özetimi Gör",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "Geçen 7 günü tek bakışta incele",
+                            fontSize = 12.sp,
+                            color = Color.White.copy(alpha = 0.7f)
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // 3. Backend Dashboard State
             Box(
                 modifier = Modifier
-                    .weight(1f)
                     .fillMaxWidth()
             ) {
                 when (val state = dashboardState) {
                     is Resource.Loading -> {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().height(200.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
                             CircularProgressIndicator(color = LoginButton)
                         }
                     }
                     is Resource.Error -> {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            Icon(Icons.Default.Warning, contentDescription = null, tint = DangerRed, modifier = Modifier.size(48.dp))
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                state.message ?: "Dashboard verileri yüklenirken hata oluştu.",
-                                textAlign = TextAlign.Center,
-                                color = LoginTextColor
+                        if (state.isPremiumRequired) {
+                            PremiumLockedCard(
+                                title = "Premium Analiz",
+                                description = "Gelişmiş iyi oluş analizleri ve kişisel raporlar Premium üyelikle açılır.",
+                                ctaText = "Premium'a Geç",
+                                onUpgradeClick = { navController.navigate("payment_methods") },
+                                modifier = Modifier.padding(vertical = 16.dp)
                             )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Button(
-                                onClick = { viewModel.loadDashboard() },
-                                colors = ButtonDefaults.buttonColors(containerColor = LoginButton)
+                        } else {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
                             ) {
-                                Text("Yeniden Dene")
+                                Icon(Icons.Default.Warning, contentDescription = null, tint = DangerRed, modifier = Modifier.size(48.dp))
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    state.message ?: "Dashboard verileri yüklenirken hata oluştu.",
+                                    textAlign = TextAlign.Center,
+                                    color = LoginTextColor
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Button(
+                                    onClick = { viewModel.loadDashboard() },
+                                    colors = ButtonDefaults.buttonColors(containerColor = LoginButton)
+                                ) {
+                                    Text("Yeniden Dene")
+                                }
                             }
                         }
                     }
                     is Resource.Success -> {
                         val response = state.data
                         if (response == null) {
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().height(120.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
                                 Text("Veri bulunamadı.", color = LoginTextColor)
                             }
                         } else {
@@ -197,8 +356,7 @@ fun WellnessDashboardScreen(
 
                             Column(
                                 modifier = Modifier
-                                    .fillMaxSize()
-                                    .verticalScroll(scrollState)
+                                    .fillMaxWidth()
                                     .padding(bottom = 24.dp)
                             ) {
                                 // Stale cache badge
@@ -388,6 +546,256 @@ fun WellnessDashboardScreen(
 
                                 Spacer(modifier = Modifier.height(20.dp))
 
+                                // New "İlerleme" Section (Delta Cards + Canvas Graph)
+                                Text(
+                                    "Gelişim ve İlerleme",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = LoginTextColor,
+                                    modifier = Modifier.padding(start = 4.dp, bottom = 12.dp)
+                                )
+
+                                // Check if we have snapshots logged in database
+                                val last7Days by viewModel.last7DaysSnapshots.collectAsState()
+                                val last30Days by viewModel.last30DaysSnapshots.collectAsState()
+
+                                if (last7Days.isEmpty()) {
+                                    // Global Empty State Card
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
+                                        shape = RoundedCornerShape(20.dp),
+                                        color = PremiumWhiteCard,
+                                        border = BorderStroke(1.dp, SoftMintAccent.copy(alpha = 0.5f))
+                                    ) {
+                                        Column(modifier = Modifier.padding(20.dp)) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Info,
+                                                    contentDescription = null,
+                                                    tint = DarkTealPrimary,
+                                                    modifier = Modifier.size(24.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(12.dp))
+                                                Text(
+                                                    text = "İlerleme verileri oluşturuluyor",
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 15.sp,
+                                                    color = LoginTextColor
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                text = "Daha fazla kullanım sonrasında gelişim trendlerini burada görebileceksin. Her gün zihinsel wellness paneline göz atarak veya sohbet ederek günlük wellness skor gelişimini takip edebilirsin.",
+                                                fontSize = 12.sp,
+                                                lineHeight = 18.sp,
+                                                color = LoginSecondaryText
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    // 1. Delta Progression Cards Row
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        // Card 1: Son 7 Gün
+                                        val delta7Text = remember(last7Days) {
+                                            progressRepository.calculateScoreDelta(last7Days)
+                                        }
+                                        val is7Gelisim = delta7Text.contains("gelişim")
+                                        val is7Dusis = delta7Text.contains("düşüş")
+                                        val card7Bg = when {
+                                            is7Gelisim -> SoftMintLight
+                                            is7Dusis -> MildAlertBg
+                                            else -> PremiumWhiteCard
+                                        }
+                                        val card7Border = when {
+                                            is7Gelisim -> DarkTealPrimary.copy(alpha = 0.2f)
+                                            is7Dusis -> MildAlertText.copy(alpha = 0.2f)
+                                            else -> SoftMintAccent.copy(alpha = 0.5f)
+                                        }
+                                        val text7Color = when {
+                                            is7Gelisim -> DarkTealPrimary
+                                            is7Dusis -> MildAlertText
+                                            else -> LoginSecondaryText
+                                        }
+
+                                        Surface(
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(16.dp),
+                                            color = card7Bg,
+                                            border = BorderStroke(1.dp, card7Border)
+                                        ) {
+                                            Column(modifier = Modifier.padding(14.dp)) {
+                                                Text("Son 7 Gün", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = LoginTextColor)
+                                                Spacer(modifier = Modifier.height(6.dp))
+                                                Text(
+                                                    text = delta7Text,
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = text7Color
+                                                )
+                                            }
+                                        }
+
+                                        // Card 2: Son 30 Gün
+                                        val delta30Text = remember(last30Days) {
+                                            progressRepository.calculateScoreDelta(last30Days)
+                                        }
+                                        val is30Gelisim = delta30Text.contains("gelişim")
+                                        val is30Dusis = delta30Text.contains("düşüş")
+                                        val card30Bg = when {
+                                            is30Gelisim -> SoftMintLight
+                                            is30Dusis -> MildAlertBg
+                                            else -> PremiumWhiteCard
+                                        }
+                                        val card30Border = when {
+                                            is30Gelisim -> DarkTealPrimary.copy(alpha = 0.2f)
+                                            is30Dusis -> MildAlertText.copy(alpha = 0.2f)
+                                            else -> SoftMintAccent.copy(alpha = 0.5f)
+                                        }
+                                        val text30Color = when {
+                                            is30Gelisim -> DarkTealPrimary
+                                            is30Dusis -> MildAlertText
+                                            else -> LoginSecondaryText
+                                        }
+
+                                        Surface(
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(16.dp),
+                                            color = card30Bg,
+                                            border = BorderStroke(1.dp, card30Border)
+                                        ) {
+                                            Column(modifier = Modifier.padding(14.dp)) {
+                                                Text("Son 30 Gün", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = LoginTextColor)
+                                                Spacer(modifier = Modifier.height(6.dp))
+                                                Text(
+                                                    text = delta30Text,
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = text30Color
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // 2. Line Chart Visualizer Card (Canvas-based)
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
+                                        shape = RoundedCornerShape(20.dp),
+                                        color = PremiumWhiteCard,
+                                        border = BorderStroke(1.dp, SoftMintAccent.copy(alpha = 0.5f))
+                                    ) {
+                                        Column(modifier = Modifier.padding(16.dp)) {
+                                            Text(
+                                                text = "Skor Değişim Grafiği (Son 7 Gün)",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = LoginTextColor,
+                                                modifier = Modifier.padding(bottom = 12.dp)
+                                            )
+
+                                            if (last7Days.size < 2) {
+                                                // Graph empty state
+                                                Box(
+                                                    modifier = Modifier.fillMaxWidth().height(120.dp),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                        Icon(Icons.Default.Info, contentDescription = null, tint = SecondaryTealText, modifier = Modifier.size(24.dp))
+                                                        Spacer(modifier = Modifier.height(4.dp))
+                                                        Text("Henüz yeterli veri yok", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = LoginTextColor)
+                                                        Text("En az 2 günlük wellness skoru kaydı gerekiyor.", fontSize = 10.sp, color = LoginSecondaryText)
+                                                    }
+                                                }
+                                            } else {
+                                                // Renders custom Compose line graph using Canvas
+                                                // Reverse list to show chronologically from left to right (oldest to newest)
+                                                val chronologicalSnapshots = remember(last7Days) {
+                                                    last7Days.reversed()
+                                                }
+
+                                                Canvas(
+                                                    modifier = Modifier.fillMaxWidth().height(140.dp)
+                                                ) {
+                                                    val canvasWidth = size.width
+                                                    val canvasHeight = size.height
+                                                    val paddingLeft = 30.dp.toPx()
+                                                    val paddingRight = 30.dp.toPx()
+                                                    val paddingTop = 20.dp.toPx()
+                                                    val paddingBottom = 20.dp.toPx()
+
+                                                    val drawWidth = canvasWidth - paddingLeft - paddingRight
+                                                    val drawHeight = canvasHeight - paddingTop - paddingBottom
+
+                                                    val pointsCount = chronologicalSnapshots.size
+                                                    val stepX = drawWidth / (pointsCount - 1)
+
+                                                    // Wellness score is 0 to 100
+                                                    val linePath = Path()
+                                                    val fillPath = Path()
+
+                                                    // Calculate coordinates
+                                                    val coordinates = chronologicalSnapshots.mapIndexed { idx, snap ->
+                                                        val x = paddingLeft + (idx * stepX)
+                                                        // Score 100 is at top (paddingTop), score 0 is at bottom (paddingTop + drawHeight)
+                                                        val normScore = snap.score.coerceIn(0, 100).toFloat() / 100f
+                                                        val y = paddingTop + (drawHeight * (1f - normScore))
+                                                        x to y
+                                                    }
+
+                                                    // Begin paths
+                                                    coordinates.forEachIndexed { idx, (x, y) ->
+                                                        if (idx == 0) {
+                                                            linePath.moveTo(x, y)
+                                                            fillPath.moveTo(x, paddingTop + drawHeight)
+                                                            fillPath.lineTo(x, y)
+                                                        } else {
+                                                            linePath.lineTo(x, y)
+                                                            fillPath.lineTo(x, y)
+                                                        }
+                                                        if (idx == coordinates.lastIndex) {
+                                                            fillPath.lineTo(x, paddingTop + drawHeight)
+                                                            fillPath.close()
+                                                        }
+                                                    }
+
+                                                    // 1. Draw solid background filled area
+                                                    drawPath(
+                                                        path = fillPath,
+                                                        color = SoftMintAccent.copy(alpha = 0.25f)
+                                                    )
+
+                                                    // 2. Draw active connecting line
+                                                    drawPath(
+                                                        path = linePath,
+                                                        color = DarkTealAccent,
+                                                        style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+                                                    )
+
+                                                    // 3. Draw circle dots on each score point, score label and date abbreviation
+                                                    coordinates.forEachIndexed { idx, (x, y) ->
+                                                        // Point circle
+                                                        drawCircle(
+                                                            color = DarkTealPrimary,
+                                                            radius = 4.dp.toPx(),
+                                                            center = androidx.compose.ui.geometry.Offset(x, y)
+                                                        )
+                                                        // White inner dot for premium look
+                                                        drawCircle(
+                                                            color = Color.White,
+                                                            radius = 2.dp.toPx(),
+                                                            center = androidx.compose.ui.geometry.Offset(x, y)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(20.dp))
+
                                 // C. Overview Stats Grid (2x2 Display)
                                 Text(
                                     "Genel Durum Özetleri",
@@ -523,6 +931,7 @@ fun WellnessDashboardScreen(
                                             )
 
                                             val maxVal = sections.dailyTrend.maxOfOrNull { it.totalCount } ?: 1
+                                            val resolvedLoginButton = LoginButton
                                             Canvas(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
@@ -543,7 +952,7 @@ fun WellnessDashboardScreen(
                                                         path.lineTo(x, y)
                                                     }
                                                     drawCircle(
-                                                        color = LoginButton,
+                                                        color = resolvedLoginButton,
                                                         radius = 4.dp.toPx(),
                                                         center = androidx.compose.ui.geometry.Offset(x, y)
                                                     )
@@ -551,7 +960,7 @@ fun WellnessDashboardScreen(
 
                                                 drawPath(
                                                     path = path,
-                                                    color = LoginButton,
+                                                    color = resolvedLoginButton,
                                                     style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
                                                 )
                                             }
@@ -583,7 +992,8 @@ fun WellnessDashboardScreen(
                                         Surface(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .padding(vertical = 4.dp),
+                                                .padding(vertical = 4.dp)
+                                                .clickable { navController.navigate("insights") },
                                             shape = RoundedCornerShape(16.dp),
                                             color = Color.White.copy(alpha = 0.8f)
                                         ) {
@@ -781,13 +1191,13 @@ fun DashboardStatCard(
     tint: Color,
     modifier: Modifier = Modifier
 ) {
-    Surface(
+    PremiumCard(
         modifier = modifier.height(80.dp),
-        shape = RoundedCornerShape(18.dp),
-        color = Color.White.copy(alpha = 0.75f)
+        backgroundColor = Color.White.copy(alpha = 0.75f),
+        cornerRadius = 18.dp,
+        elevation = 1.dp
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
@@ -807,3 +1217,54 @@ fun DashboardStatCard(
         }
     }
 }
+
+@Composable
+private fun StreakStatCard(
+    title: String,
+    value: String,
+    subtitle: String,
+    badge: String,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = PremiumWhiteCard,
+        border = BorderStroke(1.dp, SoftMintAccent.copy(alpha = 0.5f))
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = title,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = LoginSecondaryText
+                )
+                Text(
+                    text = badge,
+                    fontSize = 14.sp
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = value,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Black,
+                color = LoginTextColor
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = subtitle,
+                fontSize = 11.sp,
+                color = SecondaryTealText
+            )
+        }
+    }
+}
+

@@ -37,10 +37,10 @@ class OfflineSyncWorker(
         }
 
         val api = RetrofitClient.create(tokenManager)
-        val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+        val isoTimestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(Date())
 
         db.syncEventDao().insertSyncEvent(
-            SyncEventEntity(eventType = "sync_all", status = "queued", timestamp = timestamp)
+            SyncEventEntity(eventType = "sync_all", status = "queued", timestamp = isoTimestamp)
         )
 
         Log.d("OfflineSyncWorker", "SYNC_JOB | started | user: $username")
@@ -57,14 +57,16 @@ class OfflineSyncWorker(
                     chat.idempotencyKey
                 )
                 
-                // Success: remove pending and save assistant response in cache
+                // Success: remove pending, update original user cached message state to synced, and save assistant response in cache
                 db.chatDao().deletePendingMessage(chat.localId)
+                db.chatDao().updateCachedMessageStateByLocalId(chat.localId, "synced")
                 db.chatDao().insertCachedMessage(
                     CachedChatMessage(
                         userId = username,
                         role = "assistant",
                         text = response.response,
-                        timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+                        timestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(Date()),
+                        state = "synced"
                     )
                 )
                 
@@ -73,7 +75,7 @@ class OfflineSyncWorker(
                         eventType = "chat",
                         status = "success",
                         message = "Chat message synced. localId: ${chat.localId}",
-                        timestamp = timestamp
+                        timestamp = isoTimestamp
                     )
                 )
                 Log.d("OfflineSyncWorker", "SYNC_JOB | chat success | localId: ${chat.localId}")
@@ -90,7 +92,7 @@ class OfflineSyncWorker(
                         eventType = "chat",
                         status = "failed",
                         message = "Http error: ${e.code()}. localId: ${chat.localId}",
-                        timestamp = timestamp
+                        timestamp = isoTimestamp
                     )
                 )
                 Log.e("OfflineSyncWorker", "SYNC_JOB | chat failed server | localId: ${chat.localId} | code: ${e.code()}")
@@ -138,7 +140,7 @@ class OfflineSyncWorker(
                         eventType = "mood_${mood.action.lowercase()}",
                         status = "success",
                         message = "Mood log synced. localId: ${mood.localId}",
-                        timestamp = timestamp
+                        timestamp = isoTimestamp
                     )
                 )
                 Log.d("OfflineSyncWorker", "SYNC_JOB | mood success | localId: ${mood.localId}")
@@ -158,7 +160,7 @@ class OfflineSyncWorker(
                             eventType = "mood_${mood.action.lowercase()}",
                             status = "failed",
                             message = "Http error: ${e.code()}. localId: ${mood.localId}",
-                            timestamp = timestamp
+                            timestamp = isoTimestamp
                         )
                     )
                 }

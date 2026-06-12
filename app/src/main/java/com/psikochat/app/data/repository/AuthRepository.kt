@@ -35,7 +35,11 @@ class AuthRepository(private val api: PsikoApi) {
                 val parsedMessage = try {
                     if (!errorBody.isNullOrBlank()) {
                         val json = JSONObject(errorBody)
-                        if (json.has("detail")) json.getString("detail") else defaultMessage
+                        when {
+                            json.has("message") -> json.getString("message")
+                            json.has("detail") -> json.getString("detail")
+                            else -> defaultMessage
+                        }
                     } else defaultMessage
                 } catch (ex: Exception) {
                     defaultMessage

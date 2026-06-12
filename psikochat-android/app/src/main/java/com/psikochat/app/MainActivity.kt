@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -17,6 +19,7 @@ import com.psikochat.app.ui.auth.LoginScreen
 import com.psikochat.app.ui.auth.SplashScreen
 import com.psikochat.app.ui.auth.RegistrationScreen
 import com.psikochat.app.ui.auth.ForgotPasswordScreen
+import com.psikochat.app.ui.auth.OnboardingWizardScreen
 import com.psikochat.app.ui.home.HomeScreen
 import com.psikochat.app.ui.home.ProfileScreen
 import com.psikochat.app.ui.home.SettingsScreen
@@ -28,7 +31,12 @@ import com.psikochat.app.ui.home.WellnessDashboardScreen
 import com.psikochat.app.ui.home.MemorySettingsScreen
 import com.psikochat.app.ui.home.PrivacyDataScreen
 import com.psikochat.app.ui.home.RecommendationScreen
+import com.psikochat.app.ui.home.AchievementGalleryScreen
+import com.psikochat.app.ui.home.WeeklyRecapScreen
+import com.psikochat.app.ui.home.PaymentMethodsScreen
 import com.psikochat.app.ui.chat.ChatScreen
+import com.psikochat.app.ui.insights.ReflectionScreen
+import com.psikochat.app.ui.insights.InsightsScreen
 
 import com.psikochat.app.ui.theme.PsikochatTheme
 import com.psikochat.app.data.local.TokenManager
@@ -65,10 +73,17 @@ class MainActivity : ComponentActivity() {
 
         // Emit initial notification route target if started from intent tap
         intent.getStringExtra("route")?.let { targetRouteFlow.tryEmit(it) }
+        handleIntentData(intent)
 
         val tokenManager = TokenManager(this)
         setContent {
-            PsikochatTheme {
+            val themePreference by tokenManager.getThemePreference().collectAsState(initial = "system")
+            val darkTheme = when (themePreference) {
+                "light" -> false
+                "dark" -> true
+                else -> androidx.compose.foundation.isSystemInDarkTheme()
+            }
+            PsikochatTheme(darkTheme = darkTheme) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -120,6 +135,7 @@ class MainActivity : ComponentActivity() {
 
                     NavHost(navController = navController, startDestination = "splash") {
                         composable("splash") { SplashScreen(navController, tokenManager) }
+                        composable("onboarding_wizard") { OnboardingWizardScreen(navController, tokenManager) }
                         
                         navigation(startDestination = "login", route = "auth_graph") {
                             composable("login") { LoginScreen(navController, tokenManager) }
@@ -133,14 +149,39 @@ class MainActivity : ComponentActivity() {
                             composable("settings") { SettingsScreen(navController, tokenManager) }
                             composable("therapy") { TherapyScreen(navController, tokenManager) }
                             composable("chat") { ChatScreen(navController, tokenManager) }
+                            composable("chat/{targetDate}") { backStackEntry ->
+                                val targetDate = backStackEntry.arguments?.getString("targetDate")
+                                val decodedDate = java.net.URLDecoder.decode(targetDate ?: "", java.nio.charset.StandardCharsets.UTF_8.toString())
+                                ChatScreen(navController, tokenManager, targetDate = decodedDate)
+                            }
+                            composable("chat_history") { com.psikochat.app.ui.chat.ChatHistoryScreen(navController, tokenManager) }
                             composable("wellness_schedule") { WellnessScheduleScreen(navController, tokenManager) }
                             composable("wellness_report") { WellnessReportScreen(navController, tokenManager) }
                             composable("mood_journal") { MoodJournalScreen(navController, tokenManager) }
                             composable("wellness_dashboard") { WellnessDashboardScreen(navController, tokenManager) }
+                            composable("reflections") { ReflectionScreen(navController, tokenManager) }
+                            composable("insights") { InsightsScreen(navController, tokenManager) }
                             composable("memory_settings") { MemorySettingsScreen(navController, tokenManager) }
                             composable("privacy_data") { PrivacyDataScreen(navController, tokenManager) }
                             // Faz 10 Prompt 7: Recommendation Engine Screen
                             composable("recommendations") { RecommendationScreen(navController, tokenManager) }
+                            // Phase 8B.4: Achievement Gallery
+                            composable("achievements") { AchievementGalleryScreen(navController, tokenManager) }
+                            // Phase 8B.5: Weekly Wellness Recap
+                            composable("weekly_recap") { WeeklyRecapScreen(navController, tokenManager) }
+                            composable(
+                                route = "payment_methods?payment_result={payment_result}",
+                                arguments = listOf(
+                                    androidx.navigation.navArgument("payment_result") {
+                                        type = androidx.navigation.NavType.StringType
+                                        nullable = true
+                                        defaultValue = null
+                                    }
+                                )
+                            ) { backStackEntry ->
+                                val paymentResult = backStackEntry.arguments?.getString("payment_result")
+                                PaymentMethodsScreen(navController, tokenManager, paymentResult = paymentResult)
+                            }
                         }
                     }
                 }
@@ -151,6 +192,15 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         intent.getStringExtra("route")?.let { targetRouteFlow.tryEmit(it) }
+        handleIntentData(intent)
+    }
+
+    private fun handleIntentData(intent: Intent?) {
+        val data = intent?.data ?: return
+        if (data.scheme == "psikochat" && data.host == "payment" && data.path == "/callback") {
+            val paymentResult = data.getQueryParameter("payment_result") ?: "unknown"
+            targetRouteFlow.tryEmit("payment_methods?payment_result=$paymentResult")
+        }
     }
 
     private fun setupProductionWorkManager() {

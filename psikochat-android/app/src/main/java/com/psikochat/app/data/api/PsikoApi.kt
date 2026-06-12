@@ -1,4 +1,5 @@
 package com.psikochat.app.data.api
+
 import com.psikochat.app.data.model.*
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -8,7 +9,6 @@ import retrofit2.http.DELETE
 import retrofit2.http.Multipart
 import retrofit2.http.Part
 import okhttp3.MultipartBody
-
 import retrofit2.http.HTTP
 
 interface PsikoApi {
@@ -115,4 +115,19 @@ interface PsikoApi {
         @retrofit2.http.Path("rec_id") recId: String,
         @Body request: RecommendationFeedbackRequest
     ): Map<String, String>
+
+    @GET("/subscriptions/plans")
+    suspend fun getSubscriptionPlans(): List<SubscriptionPlanDto>
+
+    @GET("/subscriptions/me")
+    suspend fun getMySubscription(): SubscriptionStatusDto
+
+    @POST("/subscriptions/checkout")
+    suspend fun startCheckout(
+        @Body request: CheckoutRequestDto,
+        @retrofit2.http.Header("X-Idempotency-Key") idempotencyKey: String
+    ): CheckoutResponseDto
+
+    @GET("/payments/history")
+    suspend fun getPaymentHistory(): List<PaymentHistoryDto>
 }

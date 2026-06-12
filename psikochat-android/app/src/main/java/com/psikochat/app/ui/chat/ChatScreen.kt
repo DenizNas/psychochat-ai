@@ -13,8 +13,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -36,6 +39,7 @@ import androidx.navigation.NavController
 import com.psikochat.app.data.api.RetrofitClient
 import com.psikochat.app.data.local.TokenManager
 import com.psikochat.app.data.model.HistoryItem
+import com.psikochat.app.data.model.Resource
 import com.psikochat.app.data.realtime.ConnectionState
 import com.psikochat.app.data.realtime.RealtimeWebSocketManager
 import com.psikochat.app.data.repository.ChatRepository
@@ -44,29 +48,65 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen(navController: NavController, tokenManager: TokenManager) {
+fun ChatScreen(navController: NavController, tokenManager: TokenManager, targetDate: String? = null) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val db = com.psikochat.app.data.local.AppDatabase.getInstance(context)
     val syncManager = com.psikochat.app.data.sync.SyncManager.getInstance(context)
     val api = RetrofitClient.create(tokenManager)
     val repo = ChatRepository(api, db.chatDao())
+    val privacyRepo = com.psikochat.app.data.repository.PrivacyRepository(api)
     val factory = object : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             val wsManager = RealtimeWebSocketManager(
                 tokenManager = tokenManager,
-                scope = androidx.lifecycle.ViewModelProvider
-                    .NewInstanceFactory()
-                    .create(androidx.lifecycle.ViewModel::class.java)
-                    .let { kotlinx.coroutines.MainScope() },
+                scope = kotlinx.coroutines.MainScope(),
             )
             @Suppress("UNCHECKED_CAST")
-            return ChatViewModel(repo, wsManager, tokenManager, syncManager) as T
+            return ChatViewModel(repo, wsManager, tokenManager, syncManager, privacyRepo) as T
         }
     }
     val viewModel: ChatViewModel = viewModel(factory = factory)
+
+    // Observe Consent State
+    val aiConsentGranted by viewModel.aiConsentGranted.collectAsState()
+    val isConsentOffline by viewModel.isConsentOffline.collectAsState()
+
+    // Screen Resume Lifecycle Observer for auto-refreshing consent status
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                viewModel.checkConsentAndConnect()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    // Profile ViewModel Integration for Personalized Welcome Greeting
+    val profileRepo = com.psikochat.app.data.repository.ProfileRepository(api)
+    val profileFactory = object : ViewModelProvider.Factory {
+        @Suppress("UNCHECKED_CAST")
+        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+            return com.psikochat.app.ui.home.ProfileViewModel(profileRepo, tokenManager) as T
+        }
+    }
+    val profileViewModel: com.psikochat.app.ui.home.ProfileViewModel = viewModel(factory = profileFactory)
+    val profileState by profileViewModel.profileState.collectAsState()
+
+    val welcomeName = when (val state = profileState) {
+        is Resource.Success -> state.data?.displayName ?: state.data?.username ?: "Kullanıcı"
+        else -> "Kullanıcı"
+    }
 
     val messages by viewModel.messages.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -74,11 +114,13 @@ fun ChatScreen(navController: NavController, tokenManager: TokenManager) {
     val lastFailedMessage by viewModel.lastFailedMessage.collectAsState()
     val isAssistantTyping by viewModel.isAssistantTyping.collectAsState()
     val connectionState by viewModel.connectionState.collectAsState()
+    val crisisAlert by viewModel.crisisAlert.collectAsState()
     
     val currentToken by tokenManager.getToken().collectAsState(initial = "loading")
 
     val listState = rememberLazyListState()
     var previousMessagesSize by remember { mutableIntStateOf(0) }
+    var showNewChatConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(currentToken) {
         if (currentToken == null) {
@@ -115,23 +157,27 @@ fun ChatScreen(navController: NavController, tokenManager: TokenManager) {
                     title = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
-                                imageVector = Icons.Default.Settings,
+                                imageVector = Icons.Default.Favorite,
                                 contentDescription = null,
-                                modifier = Modifier.size(24.dp),
-                                tint = LoginTextColor
+                                modifier = Modifier.size(22.dp),
+                                tint = LoginButton
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("PsikoChat", style = MaterialTheme.typography.titleMedium, color = LoginTextColor)
+                            val titleText = if (targetDate != null) "Geçmiş Sohbet ($targetDate)" else "PsikoChat"
+                            Text(titleText, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = LoginTextColor)
                         }
                     },
                     navigationIcon = {
                         IconButton(onClick = { navController.popBackStack() }) {
-                            Icon(Icons.Default.KeyboardArrowLeft, contentDescription = "Geri", tint = LoginTextColor)
+                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Geri", tint = LoginTextColor)
                         }
                     },
                     actions = {
-                        IconButton(onClick = { }) {
-                            Icon(Icons.Default.Menu, contentDescription = "Menü", tint = LoginTextColor)
+                        IconButton(onClick = { showNewChatConfirm = true }) {
+                            Icon(Icons.Default.Add, contentDescription = "Yeni Sohbet", tint = LoginTextColor)
+                        }
+                        IconButton(onClick = { navController.navigate("chat_history") }) {
+                            Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Sohbet Geçmişi", tint = LoginTextColor)
                         }
                     },
                     colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent)
@@ -148,18 +194,40 @@ fun ChatScreen(navController: NavController, tokenManager: TokenManager) {
                 },
                 onTextChanged = {
                     viewModel.onUserTyping()
-                }
+                },
+                enabled = aiConsentGranted != false
             )
         },
         containerColor = LoginBackground
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
-            Text(
-                text = "PsikoChat Sohbet",
-                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                color = LoginTextColor,
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
-            )
+
+            if (isConsentOffline) {
+                Surface(
+                    color = SoftMintAccent.copy(alpha = 0.3f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            tint = DarkTealPrimary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Gizlilik izni çevrimdışı doğrulanamadı, mevcut ayarlarla devam ediliyor.",
+                            fontSize = 11.sp,
+                            color = LoginTextColor,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
 
             if (error != null) {
                 Surface(
@@ -190,7 +258,16 @@ fun ChatScreen(navController: NavController, tokenManager: TokenManager) {
                 }
             }
 
-            val groupedMessages = messages.groupBy { extractDateString(it.timestamp) }
+            val filteredMessages = remember(messages, targetDate) {
+                if (targetDate != null) {
+                    messages.filter { extractDateString(it.timestamp) == targetDate }
+                } else {
+                    messages
+                }
+            }
+            val groupedMessages = remember(filteredMessages) {
+                filteredMessages.groupBy { extractDateString(it.timestamp) }
+            }
 
             LazyColumn(
                 state = listState,
@@ -198,13 +275,13 @@ fun ChatScreen(navController: NavController, tokenManager: TokenManager) {
                 contentPadding = PaddingValues(16.dp),
                 reverseLayout = false
             ) {
-                if (messages.isEmpty() && !isLoading) {
+                if (filteredMessages.isEmpty() && !isLoading) {
                     item {
                         EmptyChatState(modifier = Modifier.fillParentMaxSize())
                     }
                 } else {
                     item {
-                        SystemNoteBubble("PsikoChat'e hoş geldiniz! Lütfen nasıl hissettiğinizi paylaşın.")
+                        SystemNoteBubble("PsikoChat'e hoş geldiniz, $welcomeName! Lütfen bugün nasıl hissettiğinizi paylaşın.")
                         Spacer(modifier = Modifier.height(16.dp))
                     }
 
@@ -246,7 +323,149 @@ fun ChatScreen(navController: NavController, tokenManager: TokenManager) {
                     }
                 }
             }
+
+            if (aiConsentGranted == false) {
+                Surface(
+                    color = MildAlertBg,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MildAlertText.copy(alpha = 0.3f)),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    shadowElevation = 2.dp
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "AI yanıtları için işleme izni gerekli.",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MildAlertText,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = { navController.navigate("privacy_data") },
+                            colors = ButtonDefaults.buttonColors(containerColor = DarkTealPrimary),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Gizlilik Ayarlarına Git", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    if (showNewChatConfirm) {
+        AlertDialog(
+            onDismissRequest = { showNewChatConfirm = false },
+            title = { Text("Yeni sohbet başlatılsın mı?", fontWeight = FontWeight.Bold, color = LoginTextColor) },
+            text = { Text("Mevcut sohbet geçmişin silinmeyecek. Sadece ekrandaki aktif konuşma temizlenecek.", color = LoginTextColor) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.clearVisibleMessages()
+                        showNewChatConfirm = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = DarkTealPrimary)
+                ) {
+                    Text("Başlat", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNewChatConfirm = false }) {
+                    Text("Vazgeç")
+                }
+            }
+        )
+    }
+
+    if (crisisAlert != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.clearCrisisAlert() },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Warning, contentDescription = null, tint = DangerRed, modifier = Modifier.size(24.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Destek ve Güvenlik ❤️", fontWeight = FontWeight.Bold, color = LoginTextColor)
+                }
+            },
+            text = {
+                Column {
+                    Text(
+                        text = crisisAlert!!,
+                        fontSize = 14.sp,
+                        color = LoginTextColor
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Surface(
+                        color = MildAlertBg,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MildAlertText.copy(alpha = 0.3f)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Unutmayın, yalnız değilsiniz. Destek ekiplerimiz ve acil hatlar 7/24 yanınızda.",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MildAlertText,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                try {
+                                    val intent = Intent(Intent.ACTION_DIAL).apply {
+                                        data = Uri.parse("tel:112")
+                                    }
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Arama başlatılamadı: 112", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = DangerRed),
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("112'yi Ara", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+
+                        Button(
+                            onClick = {
+                                try {
+                                    val intent = Intent(Intent.ACTION_DIAL).apply {
+                                        data = Uri.parse("tel:114")
+                                    }
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Arama başlatılamadı: 114", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = DarkTealPrimary),
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("114 Destek Hattı", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.clearCrisisAlert() },
+                    colors = ButtonDefaults.buttonColors(containerColor = DarkTealPrimary)
+                ) {
+                    Text("Anladım", color = Color.White)
+                }
+            }
+        )
     }
 }
 
@@ -275,7 +494,8 @@ fun MessageBubble(msg: HistoryItem) {
                 color = bgColor,
                 shape = shape,
                 modifier = Modifier.widthIn(max = 280.dp),
-                shadowElevation = 2.dp
+                shadowElevation = 1.dp,
+                border = if (isUser) null else androidx.compose.foundation.BorderStroke(1.dp, SoftMintAccent.copy(alpha = 0.5f))
             ) {
                 Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
                     Text(
@@ -286,12 +506,31 @@ fun MessageBubble(msg: HistoryItem) {
                         lineHeight = 22.sp
                     )
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = formatMessageTime(msg.timestamp),
-                        color = timeColor,
-                        fontSize = 10.sp,
-                        modifier = Modifier.align(Alignment.End)
-                    )
+                    Row(
+                        modifier = Modifier.align(Alignment.End),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        Text(
+                            text = formatMessageTime(msg.timestamp),
+                            color = timeColor,
+                            fontSize = 10.sp
+                        )
+                        if (isUser) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            val (icon, color) = when (msg.state) {
+                                "pending" -> Icons.Default.Refresh to timeColor
+                                "failed" -> Icons.Default.Warning to Color(0xFFEF4444)
+                                else -> Icons.Default.Check to timeColor
+                            }
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = msg.state,
+                                tint = color,
+                                modifier = Modifier.size(10.dp)
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -354,7 +593,12 @@ private fun Dot(alpha: Float) {
 }
 
 @Composable
-fun ChatInputBar(isLoading: Boolean, onSendMessage: (String) -> Unit, onTextChanged: () -> Unit = {}) {
+fun ChatInputBar(
+    isLoading: Boolean, 
+    onSendMessage: (String) -> Unit, 
+    onTextChanged: () -> Unit = {},
+    enabled: Boolean = true
+) {
     var inputText by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
 
@@ -379,7 +623,7 @@ fun ChatInputBar(isLoading: Boolean, onSendMessage: (String) -> Unit, onTextChan
                     .weight(1f)
                     .focusRequester(focusRequester)
                     .background(Color(0xFFF5F5F5), RoundedCornerShape(24.dp)),
-                enabled = !isLoading,
+                enabled = enabled && !isLoading,
                 placeholder = { Text("Mesajınızı yazın...", fontSize = 14.sp) },
                 shape = RoundedCornerShape(24.dp),
                 colors = OutlinedTextFieldDefaults.colors(
@@ -389,7 +633,9 @@ fun ChatInputBar(isLoading: Boolean, onSendMessage: (String) -> Unit, onTextChan
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(
                     onSend = {
-                        if (inputText.isNotBlank() && !isLoading) {
+                        if (inputText.isNotBlank() && !isLoading && enabled) {
+                            android.util.Log.d("ChatInput", "RAW_INPUT = $inputText")
+                            android.util.Log.d("ChatInput", "UNICODE_CODEPOINTS = ${inputText.map { it.code }.joinToString(",")}")
                             onSendMessage(inputText)
                             inputText = ""
                         }
@@ -402,12 +648,14 @@ fun ChatInputBar(isLoading: Boolean, onSendMessage: (String) -> Unit, onTextChan
             Spacer(modifier = Modifier.width(8.dp))
             IconButton(
                 onClick = {
-                    if (inputText.isNotBlank() && !isLoading) {
+                    if (inputText.isNotBlank() && !isLoading && enabled) {
+                        android.util.Log.d("ChatInput", "RAW_INPUT = $inputText")
+                        android.util.Log.d("ChatInput", "UNICODE_CODEPOINTS = ${inputText.map { it.code }.joinToString(",")}")
                         onSendMessage(inputText)
                         inputText = ""
                     }
                 },
-                enabled = !isLoading,
+                enabled = enabled && !isLoading,
                 colors = IconButtonDefaults.iconButtonColors(
                     containerColor = LoginButton,
                     disabledContainerColor = Color.Gray
@@ -454,7 +702,7 @@ fun EmptyChatState(modifier: Modifier = Modifier) {
 fun SystemNoteBubble(text: String) {
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
         Text(
-            "System Note",
+            "Sistem Notu",
             fontSize = 11.sp,
             color = Color(0xFF001F3F), // Başlık Lacivert
             fontWeight = FontWeight.ExtraBold,
@@ -479,13 +727,36 @@ fun SystemNoteBubble(text: String) {
     }
 }
 
+fun parseDateSafely(timestamp: String?): Date? {
+    if (timestamp.isNullOrBlank()) return null
+    val formats = listOf(
+        "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+        "yyyy-MM-dd'T'HH:mm:ss.SSS",
+        "yyyy-MM-dd'T'HH:mm:ss",
+        "yyyy-MM-dd HH:mm:ss",
+        "yyyy-MM-dd"
+    )
+    for (format in formats) {
+        try {
+            val sdf = SimpleDateFormat(format, Locale.getDefault())
+            if (format.endsWith("'Z'")) {
+                sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+            }
+            val date = sdf.parse(timestamp)
+            if (date != null) return date
+        } catch (e: Exception) {
+            // try next format
+        }
+    }
+    return null
+}
+
 fun formatMessageTime(timestamp: String?): String {
     if (timestamp == null) return "Şimdi"
+    val date = parseDateSafely(timestamp) ?: return ""
     return try {
-        val parser = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
-        val date = parser.parse(timestamp)
         val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
-        date?.let { formatter.format(it) } ?: ""
+        formatter.format(date)
     } catch (e: Exception) {
         ""
     }
@@ -493,11 +764,10 @@ fun formatMessageTime(timestamp: String?): String {
 
 fun extractDateString(timestamp: String?): String {
     if (timestamp == null) return "Bugün"
+    val date = parseDateSafely(timestamp) ?: return "Bilinmeyen Tarih"
     return try {
-        val parser = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
-        val date = parser.parse(timestamp)
         val formatter = SimpleDateFormat("dd MMMM yyyy", Locale("tr", "TR"))
-        val dateString = date?.let { formatter.format(it) } ?: "Bilinmeyen Tarih"
+        val dateString = formatter.format(date)
         
         val todayString = formatter.format(Date())
         if (dateString == todayString) "Bugün" else dateString

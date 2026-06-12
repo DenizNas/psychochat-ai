@@ -1,6 +1,6 @@
 import os
 from typing import List, Union
-from pydantic import BaseModel, Field, field_validator, ValidationInfo
+from pydantic import BaseModel, Field, field_validator, ValidationInfo, model_validator
 from dotenv import load_dotenv
 
 # 1. Determine active environment (defaulting to development if unset or invalid)
@@ -48,8 +48,19 @@ class Settings(BaseModel):
     BACKUP_DIR: str = Field(default="backups")
     BACKUP_RETENTION_DAYS: int = Field(default=7)
     
+    # ── Payment & Subscription Configuration ──────────────────────────────
+    IYZICO_API_KEY: str = Field(default="")
+    IYZICO_SECRET_KEY: str = Field(default="")
+    IYZICO_BASE_URL: str = Field(default="https://sandbox-api.iyzipay.com")
+    IYZICO_CALLBACK_URL: str = Field(default="http://localhost:8000/payments/webhook/iyzico")
+    PAYMENT_PROVIDER: str = Field(default="iyzico")
+    PAYMENT_MODE: str = Field(default="sandbox")
+    PRICE_PREMIUM_TRY: float = Field(default=199.99)
+    PRICE_PROFESSIONAL_TRY: float = Field(default=499.99)
+    
     # ── Multi-Model AI Orchestration Config ─────────────────────────────────
     AI_PRIMARY_PROVIDER: str = Field(default="openai")
+    AI_SECONDARY_PROVIDER: str = Field(default="none")
     AI_FALLBACK_PROVIDER: str = Field(default="local")
     AI_PRIMARY_MODEL: str = Field(default="gpt-4o")
     AI_FALLBACK_MODEL: str = Field(default="gpt-3.5-turbo")
@@ -57,6 +68,14 @@ class Settings(BaseModel):
     AI_MAX_RETRIES: int = Field(default=3)
     AI_COST_LIMIT_DAILY: float = Field(default=5.0)
     AI_ENABLE_LOCAL_FALLBACK: bool = Field(default=True)
+    
+    # Anthropic Configurations
+    ANTHROPIC_API_KEY: str = Field(default="")
+    ANTHROPIC_MODEL: str = Field(default="claude-3-5-sonnet-20241022")
+    
+    # Ollama Configurations
+    OLLAMA_BASE_URL: str = Field(default="http://localhost:11434")
+    OLLAMA_MODEL: str = Field(default="llama3")
 
     @field_validator("DEBUG", mode="before")
     @classmethod
@@ -117,6 +136,23 @@ class Settings(BaseModel):
                 )
         return v
 
+    @model_validator(mode="after")
+    def validate_payment_config(self) -> "Settings":
+        if self.PAYMENT_MODE not in ["sandbox", "production"]:
+            raise ValueError("PAYMENT_MODE must be either 'sandbox' or 'production'")
+        if self.PAYMENT_MODE == "production":
+            if not self.IYZICO_API_KEY:
+                raise ValueError("IYZICO_API_KEY must be present when PAYMENT_MODE is production")
+            if not self.IYZICO_SECRET_KEY:
+                raise ValueError("IYZICO_SECRET_KEY must be present when PAYMENT_MODE is production")
+            if not self.IYZICO_BASE_URL or "sandbox" in self.IYZICO_BASE_URL.lower():
+                raise ValueError("IYZICO_BASE_URL must not point to sandbox when PAYMENT_MODE is production")
+            if not self.IYZICO_CALLBACK_URL or not self.IYZICO_CALLBACK_URL.lower().startswith("https://"):
+                raise ValueError("IYZICO_CALLBACK_URL must be HTTPS when PAYMENT_MODE is production")
+            if "localhost" in self.IYZICO_CALLBACK_URL.lower() or "127.0.0.1" in self.IYZICO_CALLBACK_URL.lower():
+                raise ValueError("IYZICO_CALLBACK_URL must not be localhost when PAYMENT_MODE is production")
+        return self
+
 def get_settings() -> Settings:
     """Settings modelini çevre değişkenleri ile doldurup doğrular."""
     raw_debug = os.getenv("DEBUG")
@@ -163,15 +199,29 @@ def get_settings() -> Settings:
         PROMETHEUS_ENABLED=os.getenv("PROMETHEUS_ENABLED", "true").lower() == "true",
         BACKUP_DIR=os.getenv("BACKUP_DIR", "backups"),
         BACKUP_RETENTION_DAYS=int(os.getenv("BACKUP_RETENTION_DAYS", "7")),
+        # Payment & Subscription configuration bindings
+        IYZICO_API_KEY=os.getenv("IYZICO_API_KEY", ""),
+        IYZICO_SECRET_KEY=os.getenv("IYZICO_SECRET_KEY", ""),
+        IYZICO_BASE_URL=os.getenv("IYZICO_BASE_URL", "https://sandbox-api.iyzipay.com"),
+        IYZICO_CALLBACK_URL=os.getenv("IYZICO_CALLBACK_URL", "http://localhost:8000/payments/webhook/iyzico"),
+        PAYMENT_PROVIDER=os.getenv("PAYMENT_PROVIDER", "iyzico"),
+        PAYMENT_MODE=os.getenv("PAYMENT_MODE", "sandbox"),
+        PRICE_PREMIUM_TRY=float(os.getenv("PRICE_PREMIUM_TRY", "199.99")),
+        PRICE_PROFESSIONAL_TRY=float(os.getenv("PRICE_PROFESSIONAL_TRY", "499.99")),
         # AI Orchestrator bindings
         AI_PRIMARY_PROVIDER=os.getenv("AI_PRIMARY_PROVIDER", "openai"),
+        AI_SECONDARY_PROVIDER=os.getenv("AI_SECONDARY_PROVIDER", "none"),
         AI_FALLBACK_PROVIDER=os.getenv("AI_FALLBACK_PROVIDER", "local"),
         AI_PRIMARY_MODEL=os.getenv("AI_PRIMARY_MODEL", "gpt-4o"),
         AI_FALLBACK_MODEL=os.getenv("AI_FALLBACK_MODEL", "gpt-3.5-turbo"),
         AI_TIMEOUT_SECONDS=float(os.getenv("AI_TIMEOUT_SECONDS", "5.0")),
         AI_MAX_RETRIES=int(os.getenv("AI_MAX_RETRIES", "3")),
         AI_COST_LIMIT_DAILY=float(os.getenv("AI_COST_LIMIT_DAILY", "5.0")),
-        AI_ENABLE_LOCAL_FALLBACK=os.getenv("AI_ENABLE_LOCAL_FALLBACK", "true").lower() == "true"
+        AI_ENABLE_LOCAL_FALLBACK=os.getenv("AI_ENABLE_LOCAL_FALLBACK", "true").lower() == "true",
+        ANTHROPIC_API_KEY=os.getenv("ANTHROPIC_API_KEY", ""),
+        ANTHROPIC_MODEL=os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"),
+        OLLAMA_BASE_URL=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+        OLLAMA_MODEL=os.getenv("OLLAMA_MODEL", "llama3")
     )
 
 # Global settings singleton

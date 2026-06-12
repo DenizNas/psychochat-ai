@@ -44,6 +44,8 @@ class RateLimiter:
             "predict": self._parse_rate_limit(settings.PREDICT_RATE_LIMIT),
             "journal": (30, 60),  # 30 per minute as specified
             "analytics": self._parse_rate_limit(settings.ANALYTICS_RATE_LIMIT),
+            "checkout": (5, 60),  # 5 per minute for subscription checkout
+            "payment_webhook": (60, 60),  # 60 per minute for payment webhook retries (higher to avoid blocking retries)
             "default": (100, 60)
         }
 

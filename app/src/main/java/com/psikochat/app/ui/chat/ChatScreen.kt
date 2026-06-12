@@ -256,7 +256,7 @@ fun ChatScreen(navController: NavController, tokenManager: TokenManager) {
 fun MessageBubble(msg: HistoryItem) {
     val isUser = msg.role == "user"
     val align = if (isUser) Alignment.CenterEnd else Alignment.CenterStart
-    val bgColor = if (isUser) LoginButton else Color.White
+    val bgColor = if (isUser) LoginButton else PremiumCardSurface
     val textColor = if (isUser) Color.White else LoginTextColor
     val timeColor = if (isUser) Color.White.copy(alpha = 0.8f) else Color.Gray
 
@@ -325,7 +325,7 @@ fun TypingIndicator() {
 
     Box(contentAlignment = Alignment.CenterStart, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Surface(
-            color = Color.White,
+            color = PremiumCardSurface,
             shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 4.dp, bottomEnd = 16.dp),
             modifier = Modifier.widthIn(min = 60.dp),
             shadowElevation = 2.dp
@@ -359,7 +359,7 @@ fun ChatInputBar(isLoading: Boolean, onSendMessage: (String) -> Unit, onTextChan
     val focusRequester = remember { FocusRequester() }
 
     Surface(
-        color = Color.White,
+        color = PremiumCardSurface,
         modifier = Modifier.fillMaxWidth(),
         shadowElevation = 8.dp
     ) {
@@ -378,7 +378,7 @@ fun ChatInputBar(isLoading: Boolean, onSendMessage: (String) -> Unit, onTextChan
                 modifier = Modifier
                     .weight(1f)
                     .focusRequester(focusRequester)
-                    .background(Color(0xFFF5F5F5), RoundedCornerShape(24.dp)),
+                    .background(if (MaterialTheme.colorScheme.background == DarkBackground) DarkBackground else Color(0xFFF5F5F5), RoundedCornerShape(24.dp)),
                 enabled = !isLoading,
                 placeholder = { Text("Mesajınızı yazın...", fontSize = 14.sp) },
                 shape = RoundedCornerShape(24.dp),
@@ -452,25 +452,25 @@ fun EmptyChatState(modifier: Modifier = Modifier) {
 }
 @Composable
 fun SystemNoteBubble(text: String) {
+    val noteColor = if (MaterialTheme.colorScheme.background == DarkBackground) Color.White else Color(0xFF001F3F)
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
         Text(
             "System Note",
             fontSize = 11.sp,
-            color = Color(0xFF001F3F), // Başlık Lacivert
+            color = noteColor, // Başlık Lacivert / White fallback
             fontWeight = FontWeight.ExtraBold,
             modifier = Modifier.padding(start = 4.dp)
         )
         Spacer(modifier = Modifier.height(4.dp))
         Surface(
-            color = Color.White,
+            color = PremiumCardSurface,
             shape = RoundedCornerShape(0.dp, 16.dp, 16.dp, 16.dp),
             modifier = Modifier.widthIn(max = 300.dp),
             shadowElevation = 1.dp
         ) {
             Text(
                 text = text,
-                // DEĞİŞİKLİK: İçerik metni Lacivert yapıldı
-                color = Color(0xFF001F3F),
+                color = noteColor,
                 modifier = Modifier.padding(12.dp),
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold

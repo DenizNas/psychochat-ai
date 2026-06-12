@@ -20,16 +20,33 @@ async def custom_http_exception_handler(request: Request, exc: HTTPException):
     # 401 Authentication hataları için özel error code belirleme
     error_code = "UNAUTHORIZED" if exc.status_code == 401 else f"HTTP_ERROR_{exc.status_code}"
 
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={
+    if isinstance(exc.detail, dict):
+        message = exc.detail.get("message") or exc.detail.get("detail") or "Hata"
+        resp_error_code = exc.detail.get("error_code") or error_code
+        content = {
+            "status": "error",
+            "message": message,
+            "error_code": resp_error_code,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "path": path
+        }
+        for k, v in exc.detail.items():
+            if k not in ["message", "error_code"]:
+                content[k] = v
+    else:
+        content = {
             "status": "error",
             "message": str(exc.detail),
             "error_code": error_code,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "path": path
         }
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=content
     )
+
 
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     session_id = request.headers.get("X-Session-ID", "none")

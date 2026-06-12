@@ -193,6 +193,7 @@ fun PrivacyDataScreen(navController: NavController, tokenManager: TokenManager) 
             viewModel.clearStates()
             showDeleteDialog = false
             tokenManager.clearAuthData()
+            ProfileViewModel.clearCache()
             navController.navigate("auth_graph") {
                 popUpTo("main_graph") { inclusive = true }
                 launchSingleTop = true

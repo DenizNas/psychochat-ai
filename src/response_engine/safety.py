@@ -56,29 +56,26 @@ BLOCK_LIST = [
 
 SAFE_CRISIS_TEMPLATES = {
     "tr": {
-        "default": (
-            "Şu an çok zor bir dönemden geçtiğinizi hissedebiliyorum. "
-            "Size destek olmak isterim ancak bir yapay zeka olarak sınırlı yeteneklere sahibim. "
-            "Lütfen şu an güvende olduğunuzdan emin olun. Yanınızda size destek olabilecek "
-            "profesyonel bir uzmanla veya güvendiğiniz birisiyle konuşmak size iyi gelebilir. "
-            "Yalnız değilsiniz, her zaman bir çıkış yolu vardır."
-        ),
-        CAT_IMMEDIATE_DANGER: (
-            "Güvenliğiniz benim için en öncelikli konu. Şu an kendinizi veya başkasını tehlikede hissediyorsanız, "
-            "lütfen hemen 112 Acil Çağrı Merkezi'ni arayın veya en yakın sağlık kuruluşuna başvurun. "
-            "Profesyonel destek almak şu an atılabilecek en güvenli adımdır. Lütfen yalnız kalmayın."
-        ),
-        CAT_SELF_HARM: (
-            "Yaşadığınız acıyı ve zorluğu duyabiliyorum. Kendinize zarar verme düşünceleri çok ağır olabilir. "
-            "Lütfen şu an kendinizi korumaya odaklanın ve bir uzmandan destek almayı düşünün. "
-            "112'yi arayarak profesyonel yardım isteyebilirsiniz. Sizi dinleyecek ve yanınızda olacak insanlar var."
-        ),
-        CAT_SUICIDE: (
-            "Şu an hissettiğiniz çaresizliği anlıyorum ama lütfen yalnız olmadığınızı bilin. "
-            "Bu zor duygularla tek başınıza baş çıkmak zorunda değilsiniz. "
-            "Hemen 112'yi arayarak profesyonel destek alabilir veya güvendiğiniz bir yakınınızla iletişime geçebilirsiniz. "
-            "Yaşamınız değerli ve size yardım etmek isteyen uzmanlar var."
-        )
+        "default": [
+            "Şu an çok zor bir dönemden geçtiğinizi hissedebiliyorum. Size destek olmak isterim ancak bir yapay zeka olarak sınırlı yeteneklere sahibim. Lütfen şu an güvende olduğunuzdan emin olun. Yanınızda size destek olabilecek profesyonel bir uzmanla veya güvendiğiniz birisiyle konuşmak size iyi gelebilir. Yalnız değilsiniz, her zaman bir çıkış yolu vardır.",
+            "Yaşadığınız zor durumun yükünü hissedebiliyorum. Size yardımcı olmak isterim fakat bir yapay zeka asistanı olarak klinik veya profesyonel destek sağlayamam. Lütfen güvenliğinize dikkat edin, güvendiğiniz biriyle veya bir uzmanla bu duyguları paylaşmak çok yararlı olabilir. Yanınızda duracak insanlar olduğunu unutmayın.",
+            "Şu an içinden geçtiğiniz sürecin ne kadar ağır olduğunu duyabiliyorum. Size eşlik etmek isterim ancak sınırları olan bir yapay zekayım. Lütfen kendinizi güvende hissettirecek adımlar atın. Profesyonel bir psikoloğa, destek hatlarına veya bir yakınınıza ulaşmanız size çok yardımcı olabilir. Destek almak için yalnız olmadığınızı kendinize hatırlatın."
+        ],
+        CAT_IMMEDIATE_DANGER: [
+            "Güvenliğiniz benim için en öncelikli konu. Şu an kendinizi veya başkasını tehlikede hissediyorsanız, lütfen hemen 112 Acil Çağrı Merkezi'ni arayın veya en yakın sağlık kuruluşuna başvurun. Profesyonel destek almak şu an atılabilecek en güvenli adımdır. Lütfen yalnız kalmayın.",
+            "Şu an hayati bir risk veya tehlike altındaysanız, lütfen hemen 112 Acil Çağrı Merkezi'ni veya 114 Psikolojik Destek Hattı'nı arayın. En yakın hastanenin acil servisine başvurmanız da çok önemlidir. Lütfen güvende kalmak için hemen profesyonel ekiplere ulaşın.",
+            "Kendinizi veya çevrenizdekileri tehlikede hissettiğiniz anlarda, en doğru adım profesyonel yardım almaktır. Lütfen vakit kaybetmeden 112 Acil Servis hattını arayın ya da en yakın sağlık kuruluşuna yönelin. Sizi destekleyecek uzmanlar görev başındadır, lütfen onlarla iletişime geçin."
+        ],
+        CAT_SELF_HARM: [
+            "Yaşadığınız acıyı ve zorluğu duyabiliyorum. Kendinize zarar verme düşünceleri çok ağır olabilir. Lütfen şu an kendinizi korumaya odaklanın ve bir uzmandan destek almayı düşünün. 112'yi arayarak profesyonel yardım isteyebilirsiniz. Sizi dinleyecek ve yanınızda olacak insanlar var.",
+            "Kendinize zarar verme düşünceleriyle baş etmek tek başınıza çok zor olabilir. Lütfen kendinizi güvende tutacak bir alana geçin ve hemen 112'yi ya da 114 Psikolojik Destek Hattı'nı arayın. Bir profesyonelden yardım istemek şu an yapabileceğiniz en cesurca ve güvenli adımdır.",
+            "İçinizdeki bu büyük acının kendinize zarar verme isteği uyandırdığını hissediyorum. Lütfen bu zor anı atlatabilmek için hemen acil hatlardan (112) veya psikolojik danışma hatlarından (114) profesyonel destek talep edin. Bu süreci tek başınıza sırtlanmak zorunda değilsiniz."
+        ],
+        CAT_SUICIDE: [
+            "Şu an hissettiğiniz çaresizliği anlıyorum ama lütfen yalnız olmadığınızı bilin. Bu zor duygularla tek başınıza baş çıkmak zorunda değilsiniz. Hemen 112'yi arayarak profesyonel destek alabilir veya güvendiğiniz bir yakınınızla iletişime geçebilirsiniz. Yaşamınız değerli ve size yardım etmek isteyen uzmanlar var.",
+            "Yoğun bir çaresizlik hissettiğinizi duyuyorum fakat yalnız olmadığınızı ve destek alabileceğinizi hatırlatmak isterim. Lütfen hemen 112 Acil Servis'i veya 114 Psikolojik Destek Hattı'nı arayın. Bu sıkıntıları aşmanızda size rehberlik edecek uzmanlarla konuşmak yaşamınız için en güvenli adımdır.",
+            "Bu zor duyguların içinde kaybolmuş hissetmeniz çok insani, ancak her zaman bir çıkış yolu vardır. Lütfen hemen 112 Acil hattına ya da 114 Psikolojik Destek hattına ulaşarak profesyonel yardım isteyin. Kendinize destek alma şansı verin, yaşamınız çok değerlidir."
+        ]
     },
     "en": {
         "default": (
@@ -174,4 +171,8 @@ def get_crisis_safe_response(language: str = "tr", category: str = "default") ->
     }
     
     template_key = category_map.get(category, "default")
-    return lang_templates.get(template_key, lang_templates["default"])
+    res = lang_templates.get(template_key, lang_templates["default"])
+    if isinstance(res, list):
+        import random
+        return random.choice(res)
+    return res

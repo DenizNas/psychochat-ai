@@ -1,4 +1,6 @@
 package com.psikochat.app.data.api
+
+import android.util.Log
 import com.psikochat.app.data.local.TokenManager
 import com.psikochat.app.BuildConfig
 import okhttp3.OkHttpClient
@@ -8,9 +10,25 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
-    val BASE_URL = BuildConfig.BASE_URL
+    private const val TAG = "RetrofitClient"
+    
+    val BASE_URL = if (BuildConfig.BASE_URL.endsWith("/")) {
+        BuildConfig.BASE_URL
+    } else {
+        "${BuildConfig.BASE_URL}/"
+    }
+    
+    @Volatile
+    private var cachedApi: PsikoApi? = null
     
     fun create(tokenManager: TokenManager): PsikoApi {
+        Log.d(TAG, "create called. Active BASE_URL: $BASE_URL")
+        return cachedApi ?: synchronized(this) {
+            cachedApi ?: createInstance(tokenManager).also { cachedApi = it }
+        }
+    }
+    
+    private fun createInstance(tokenManager: TokenManager): PsikoApi {
         val logging = HttpLoggingInterceptor().apply {
             level = if (BuildConfig.DEBUG) {
                 HttpLoggingInterceptor.Level.BODY
@@ -33,5 +51,17 @@ object RetrofitClient {
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(PsikoApi::class.java)
+    }
+
+    fun resolveProfilePhotoUrl(url: String?): String? {
+        if (url.isNullOrBlank()) return null
+        if (url.startsWith("http://") || url.startsWith("https://")) {
+            return url
+        }
+        return if (url.startsWith("/")) {
+            "${BASE_URL.removeSuffix("/")}$url"
+        } else {
+            "$BASE_URL$url"
+        }
     }
 }

@@ -35,10 +35,14 @@ class OpenAIProvider(BaseAIProvider):
     ) -> AIProviderResult:
         model = model_config.get("model", settings.AI_PRIMARY_MODEL)
         temperature = model_config.get("temperature", 0.7)
-        max_tokens = model_config.get("max_tokens", 250)
+        max_tokens = model_config.get("max_tokens", 450)
         timeout = model_config.get("timeout_seconds", settings.AI_TIMEOUT_SECONDS)
+        frequency_penalty = model_config.get("frequency_penalty", 0.5)
+        presence_penalty = model_config.get("presence_penalty", 0.5)
+        top_p = model_config.get("top_p", 0.9)
 
-        if not settings.OPENAI_API_KEY:
+        from src.ai_providers.orchestrator import _is_placeholder_key
+        if not settings.OPENAI_API_KEY or _is_placeholder_key(settings.OPENAI_API_KEY):
             raise ValueError("OpenAI API key missing.")
 
         # Pre-calculate prompt tokens (approximate TR density: 1 token ≈ 4 characters)
@@ -55,7 +59,10 @@ class OpenAIProvider(BaseAIProvider):
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                timeout=timeout
+                timeout=timeout,
+                frequency_penalty=frequency_penalty,
+                presence_penalty=presence_penalty,
+                top_p=top_p
             )
             
             latency_ms = (time.time() - start_time) * 1000.0

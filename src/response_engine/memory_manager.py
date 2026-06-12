@@ -34,6 +34,7 @@ import re
 import threading
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
+from src.ai.preprocessing import turkish_lower
 
 # DB Persistence Imports (Phase 7)
 from src.services.database import (
@@ -352,7 +353,7 @@ def extract_and_store_memories(
                 extracted_count += 1
 
         # ── Recurring emotion tracking ──
-        if emotion and emotion.lower() not in {"neutral", "normal", "nötr"}:
+        if emotion and turkish_lower(emotion) not in {"neutral", "normal", "nötr"}:
             emotion_content = f"Kullanıcı sık sık '{emotion}' duygusu bildirdi."
             if _is_privacy_safe(emotion_content):
                 success = create_memory(
@@ -434,7 +435,7 @@ def lookup_relevant_memories(
         "important_topics": 1,
     }
 
-    current_emotion_lower = emotion.lower()
+    current_emotion_lower = turkish_lower(emotion)
 
     def _score(m: MemoryRecord) -> float:
         priority_score = PRIORITY.get(m.memory_type, 0)
@@ -442,14 +443,14 @@ def lookup_relevant_memories(
 
         # Boost recurring_emotions if it matches current emotion
         emotion_boost = 0.0
-        if m.memory_type == "recurring_emotions" and current_emotion_lower in m.content.lower():
+        if m.memory_type == "recurring_emotions" and current_emotion_lower in turkish_lower(m.content):
             emotion_boost = 1.0
 
         # Boost if text keyword matches memory content
         text_boost = 0.0
         if text and any(
-            word in m.content.lower()
-            for word in _nfc(text).lower().split()
+            word in turkish_lower(m.content)
+            for word in turkish_lower(_nfc(text)).split()
             if len(word) > 3
         ):
             text_boost = 0.5

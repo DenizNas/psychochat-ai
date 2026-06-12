@@ -37,6 +37,10 @@ class WellnessReportViewModel(
 
     fun loadReport() {
         viewModelScope.launch {
+            if (SubscriptionViewModel.getCachedSubscription()?.has_premium != true) {
+                _reportState.value = Resource.Error("Premium Rapor", isPremiumRequired = true)
+                return@launch
+            }
             _reportState.value = Resource.Loading()
             val period = _selectedPeriod.value
             val username = tokenManager.getUsername().first()

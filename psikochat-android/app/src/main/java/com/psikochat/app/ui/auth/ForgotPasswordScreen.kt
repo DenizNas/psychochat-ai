@@ -1,11 +1,15 @@
 package com.psikochat.app.ui.auth
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,34 +29,38 @@ import com.psikochat.app.ui.theme.*
 @Composable
 fun ForgotPasswordScreen(navController: NavController) {
     var emailOrPhone by remember { mutableStateOf("") }
+    val scrollState = rememberScrollState()
 
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
                         Icon(
-                            imageVector = Icons.Default.Settings,
+                            imageVector = Icons.Default.Favorite,
                             contentDescription = null,
-                            modifier = Modifier.size(24.dp),
-                            tint = LoginTextColor
+                            modifier = Modifier.size(20.dp),
+                            tint = DarkTealPrimary
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             "PsikoChat",
                             style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
                             color = LoginTextColor
                         )
                     }
                 },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(imageVector = Icons.Default.KeyboardArrowLeft, contentDescription = "Back", tint = LoginTextColor)
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { }) {
-                        Icon(imageVector = Icons.Default.Menu, contentDescription = "Menu", tint = LoginTextColor)
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                            contentDescription = "Geri",
+                            tint = LoginTextColor
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
@@ -60,112 +68,88 @@ fun ForgotPasswordScreen(navController: NavController) {
                 )
             )
         },
-        bottomBar = {
-            NavigationBar(containerColor = Color.White) {
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Home, contentDescription = null) },
-                    label = { Text("Ana Sayfa", fontSize = 10.sp) },
-                    selected = false,
-                    onClick = { }
-                )
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Share, contentDescription = null) },
-                    label = { Text("Terapi", fontSize = 10.sp) },
-                    selected = false,
-                    onClick = { }
-                )
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Person, contentDescription = null) },
-                    label = { Text("Gelişim", fontSize = 10.sp) },
-                    selected = false,
-                    onClick = { }
-                )
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                    label = { Text("Ayarlar", fontSize = 10.sp) },
-                    selected = true,
-                    onClick = { }
-                )
-            }
-        },
         containerColor = LoginBackground
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .verticalScroll(scrollState)
                 .padding(horizontal = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Top
         ) {
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+            Spacer(modifier = Modifier.height(28.dp))
+
+            // Premium Brand Emblem
+            Box(
+                modifier = Modifier
+                    .size(96.dp)
+                    .clip(CircleShape)
+                    .background(SoftMintAccent),
+                contentAlignment = Alignment.Center
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(56.dp)
-                        .clip(CircleShape)
-                        .background(Color.LightGray)
-                ) {
-                    Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.fillMaxSize().padding(10.dp), tint = Color.White)
-                }
-                Spacer(modifier = Modifier.width(16.dp))
-                Column {
-                    Text(
-                        text = "Merhaba, Elif!",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                        color = LoginTextColor
-                    )
-                    Text(
-                        text = "Şifreni mi unuttun?",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = LoginTextColor
-                    )
-                }
+                Icon(
+                    imageVector = Icons.Default.Favorite,
+                    contentDescription = null,
+                    modifier = Modifier.size(48.dp),
+                    tint = DarkTealPrimary
+                )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Forgot Password Card
+            Text(
+                text = "PsikoChat",
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 30.sp
+                ),
+                color = LoginTextColor,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "Kişisel Zihinsel Wellness Asistanınız",
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontWeight = FontWeight.Medium,
+                    lineHeight = 22.sp,
+                    letterSpacing = 0.15.sp
+                ),
+                color = LoginSecondaryText,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            // Floating Premium Card
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(32.dp),
-                color = Color.White.copy(alpha = 0.9f)
+                shape = RoundedCornerShape(28.dp),
+                color = PremiumWhiteCard,
+                tonalElevation = 2.dp,
+                border = BorderStroke(1.dp, SoftMintAccent.copy(alpha = 0.5f))
             ) {
                 Column(
                     modifier = Modifier.padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // Lock Icon Illustration
-                    Box(
-                        modifier = Modifier.size(120.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = null,
-                            modifier = Modifier.size(80.dp),
-                            tint = LoginButton.copy(alpha = 0.5f)
-                        )
-                        Icon(
-                            imageVector = Icons.Default.Info,
-                            contentDescription = null,
-                            modifier = Modifier.size(40.dp).align(Alignment.BottomEnd),
-                            tint = LoginButton
-                        )
-                    }
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
                     Text(
-                        text = "Hemen şifreni yenilemek için kayıtlı e-posta adresini veya telefon numaranı gir. Sana bir doğrulama kodu göndereceğiz.",
-                        textAlign = TextAlign.Center,
-                        fontSize = 14.sp,
+                        text = "Şifremi Unuttum",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.Bold
+                        ),
                         color = LoginTextColor,
-                        lineHeight = 20.sp
+                        modifier = Modifier.align(Alignment.Start)
+                    )
+
+                    Text(
+                        text = "Hemen şifrenizi yenilemek için kayıtlı e-posta adresinizi veya telefon numaranızı girin. Size bir doğrulama kodu göndereceğiz.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = LoginSecondaryText,
+                        modifier = Modifier.align(Alignment.Start)
                     )
 
                     Spacer(modifier = Modifier.height(24.dp))
@@ -173,15 +157,17 @@ fun ForgotPasswordScreen(navController: NavController) {
                     OutlinedTextField(
                         value = emailOrPhone,
                         onValueChange = { emailOrPhone = it },
-                        placeholder = { Text("E-posta veya Telefon Numarası", color = Color.Gray, fontSize = 14.sp) },
+                        placeholder = { Text("E-posta veya Telefon Numarası", color = LoginSecondaryText) },
                         textStyle = TextStyle(color = LoginTextColor),
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = Color.Gray) },
-                        trailingIcon = { Icon(Icons.Default.Call, contentDescription = null, tint = Color.Gray) },
+                        shape = RoundedCornerShape(16.dp),
+                        leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = SecondaryTealText) },
                         colors = OutlinedTextFieldDefaults.colors(
-                            unfocusedBorderColor = LoginButton.copy(alpha = 0.5f),
-                            focusedBorderColor = LoginButton
+                            focusedContainerColor = SoftMintLight,
+                            unfocusedContainerColor = SoftMintLight,
+                            focusedBorderColor = DarkTealPrimary,
+                            unfocusedBorderColor = SoftMintAccent,
+                            cursorColor = DarkTealPrimary
                         ),
                         singleLine = true
                     )
@@ -193,25 +179,42 @@ fun ForgotPasswordScreen(navController: NavController) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(56.dp),
-                        shape = RoundedCornerShape(28.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = LoginButton)
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = DarkTealPrimary,
+                            contentColor = Color.White
+                        )
                     ) {
-                        Text("Doğrulama Kodu Gönder", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    Row {
-                        Text(text = "Yardım mı lazım? ", color = LoginTextColor, fontSize = 14.sp)
                         Text(
-                            text = "Bize ulaşın.",
-                            color = LoginTextColor,
+                            "KOD GÖNDER",
+                            color = Color.White,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            modifier = Modifier.clickable { /* Handle contact */ }
+                            fontSize = 16.sp,
+                            letterSpacing = 1.sp
                         )
                     }
                 }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Navigation to Login Screen
+            Row(
+                modifier = Modifier.padding(bottom = 24.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Zaten hesabınız var mı? ",
+                    color = LoginSecondaryText,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                    text = "Giriş Yap",
+                    color = DarkTealPrimary,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.clickable { navController.popBackStack() }
+                )
             }
         }
     }

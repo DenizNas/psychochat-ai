@@ -61,6 +61,14 @@ fun SettingsScreen(navController: NavController, tokenManager: TokenManager) {
         }
     }
 
+    LaunchedEffect(profileState) {
+        if (profileState is Resource.Success) {
+            profileState.data?.themePreference?.let { theme ->
+                tokenManager.saveTheme(theme)
+            }
+        }
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -82,7 +90,7 @@ fun SettingsScreen(navController: NavController, tokenManager: TokenManager) {
         },
         bottomBar = {
             NavigationBar(
-                containerColor = Color.White,
+                containerColor = PremiumCardSurface,
                 tonalElevation = 8.dp,
                 modifier = Modifier.height(80.dp)
             ) {
@@ -158,7 +166,7 @@ fun SettingsScreen(navController: NavController, tokenManager: TokenManager) {
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(24.dp),
-                            color = Color.White.copy(alpha = 0.9f)
+                            color = PremiumWhiteCard
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text("Görünüm ve Dil", fontWeight = FontWeight.Bold, color = LoginTextColor, modifier = Modifier.padding(bottom = 8.dp))
@@ -189,7 +197,7 @@ fun SettingsScreen(navController: NavController, tokenManager: TokenManager) {
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(24.dp),
-                            color = Color.White.copy(alpha = 0.9f)
+                            color = PremiumWhiteCard
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text("Tercihler ve Gizlilik", fontWeight = FontWeight.Bold, color = LoginTextColor, modifier = Modifier.padding(bottom = 8.dp))
@@ -232,7 +240,7 @@ fun SettingsScreen(navController: NavController, tokenManager: TokenManager) {
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(24.dp),
-                            color = Color.White.copy(alpha = 0.9f)
+                            color = PremiumWhiteCard
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text("AI Özelleştirme", fontWeight = FontWeight.Bold, color = LoginTextColor, modifier = Modifier.padding(bottom = 8.dp))
@@ -267,7 +275,7 @@ fun SettingsScreen(navController: NavController, tokenManager: TokenManager) {
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(24.dp),
-                            color = Color.White.copy(alpha = 0.9f)
+                            color = PremiumWhiteCard
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text("Hesap İşlemleri", fontWeight = FontWeight.Bold, color = LoginTextColor, modifier = Modifier.padding(bottom = 8.dp))
@@ -309,6 +317,9 @@ fun SettingsScreen(navController: NavController, tokenManager: TokenManager) {
                                     listOf("system" to "Sistem Varsayılanı", "light" to "Açık Tema", "dark" to "Koyu Tema").forEach { (code, label) ->
                                         Row(
                                             modifier = Modifier.fillMaxWidth().clickable { 
+                                                scope.launch {
+                                                    tokenManager.saveTheme(code)
+                                                }
                                                 viewModel.updateProfile(theme = code)
                                                 showThemeDialog = false
                                             }.padding(vertical = 12.dp),

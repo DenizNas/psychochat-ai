@@ -118,7 +118,7 @@ fun ProfileScreen(navController: NavController, tokenManager: TokenManager) {
         },
         bottomBar = {
             NavigationBar(
-                containerColor = Color.White,
+                containerColor = PremiumCardSurface,
                 tonalElevation = 8.dp,
                 modifier = Modifier.height(80.dp)
             ) {
@@ -205,7 +205,7 @@ fun ProfileScreen(navController: NavController, tokenManager: TokenManager) {
                             modifier = Modifier
                                 .size(100.dp)
                                 .clip(CircleShape)
-                                .background(Color.White)
+                                .background(PremiumCardSurface)
                                 .clickable { photoPickerLauncher.launch("image/*") }
                                 .padding(4.dp)
                         ) {
@@ -216,6 +216,7 @@ fun ProfileScreen(navController: NavController, tokenManager: TokenManager) {
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .clip(CircleShape)
+                                
                                 )
                             } else {
                                 Box(
@@ -282,7 +283,7 @@ fun ProfileScreen(navController: NavController, tokenManager: TokenManager) {
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(24.dp),
-                            color = Color.White.copy(alpha = 0.9f)
+                            color = PremiumWhiteCard
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 ProfileOptionItem(Icons.Default.Settings, "Uygulama Ayarları")

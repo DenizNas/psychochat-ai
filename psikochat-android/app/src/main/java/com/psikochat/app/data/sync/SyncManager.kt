@@ -33,7 +33,8 @@ class SyncManager private constructor(context: Context) {
             }
 
             override fun onLost(network: Network) {
-                _isOnline.value = false
+                val stillOnline = isNetworkAvailable()
+                _isOnline.value = stillOnline
             }
         })
     }

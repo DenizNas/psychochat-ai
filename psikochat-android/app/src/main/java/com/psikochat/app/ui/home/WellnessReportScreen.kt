@@ -35,6 +35,7 @@ import com.psikochat.app.data.model.Resource
 import com.psikochat.app.data.model.WellnessReport
 import com.psikochat.app.data.repository.WellnessReportRepository
 import com.psikochat.app.ui.theme.*
+import com.psikochat.app.ui.components.PremiumLockedCard
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -153,26 +154,35 @@ fun WellnessReportScreen(navController: NavController, tokenManager: TokenManage
                         }
                     }
                     is Resource.Error -> {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            Icon(Icons.Default.Warning, contentDescription = null, tint = DangerRed, modifier = Modifier.size(48.dp))
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                state.message ?: "Rapor yüklenirken hata oluştu.",
-                                textAlign = TextAlign.Center,
-                                color = LoginTextColor
+                        if (state.isPremiumRequired) {
+                            PremiumLockedCard(
+                                title = "Premium Rapor",
+                                description = "Gelişmiş iyi oluş analizleri ve kişisel raporlar Premium üyelikle açılır.",
+                                ctaText = "Premium'a Geç",
+                                onUpgradeClick = { navController.navigate("payment_methods") }
                             )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Button(
-                                onClick = { viewModel.loadReport() },
-                                colors = ButtonDefaults.buttonColors(containerColor = LoginButton)
+                        } else {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
                             ) {
-                                Text("Yeniden Dene")
+                                Icon(Icons.Default.Warning, contentDescription = null, tint = DangerRed, modifier = Modifier.size(48.dp))
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    state.message ?: "Rapor yüklenirken hata oluştu.",
+                                    textAlign = TextAlign.Center,
+                                    color = LoginTextColor
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Button(
+                                    onClick = { viewModel.loadReport() },
+                                    colors = ButtonDefaults.buttonColors(containerColor = LoginButton)
+                                ) {
+                                    Text("Yeniden Dene")
+                                }
                             }
                         }
                     }

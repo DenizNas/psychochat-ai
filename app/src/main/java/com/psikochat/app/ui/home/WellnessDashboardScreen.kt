@@ -523,6 +523,8 @@ fun WellnessDashboardScreen(
                                             )
 
                                             val maxVal = sections.dailyTrend.maxOfOrNull { it.totalCount } ?: 1
+                                            // LoginButton @Composable property -- Canvas DrawScope disinda al
+                                            val chartLineColor = LoginButton
                                             Canvas(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
@@ -543,7 +545,7 @@ fun WellnessDashboardScreen(
                                                         path.lineTo(x, y)
                                                     }
                                                     drawCircle(
-                                                        color = LoginButton,
+                                                        color = chartLineColor,
                                                         radius = 4.dp.toPx(),
                                                         center = androidx.compose.ui.geometry.Offset(x, y)
                                                     )
@@ -551,7 +553,7 @@ fun WellnessDashboardScreen(
 
                                                 drawPath(
                                                     path = path,
-                                                    color = LoginButton,
+                                                    color = chartLineColor,
                                                     style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
                                                 )
                                             }

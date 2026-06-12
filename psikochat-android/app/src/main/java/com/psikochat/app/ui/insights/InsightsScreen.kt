@@ -13,7 +13,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -36,10 +35,11 @@ import com.psikochat.app.data.api.RetrofitClient
 import com.psikochat.app.data.local.TokenManager
 import com.psikochat.app.data.model.BehavioralInsight
 import com.psikochat.app.data.model.DailyTrendItem
-import com.psikochat.app.data.model.EmotionSummaryResponse
+import com.psikochat.app.data.model.WellnessDashboardResponse
 import com.psikochat.app.data.model.SmartIntervention
 import com.psikochat.app.data.repository.AnalyticsRepository
 import com.psikochat.app.ui.theme.*
+import com.psikochat.app.ui.components.PremiumLockedCard
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,7 +68,7 @@ fun InsightsScreen(navController: NavController, tokenManager: TokenManager) {
                         text = "Gelişim ve Analizler", 
                         fontWeight = FontWeight.Bold,
                         fontSize = 20.sp,
-                        color = Color.White
+                        color = LoginTextColor
                     ) 
                 },
                 navigationIcon = {
@@ -76,7 +76,7 @@ fun InsightsScreen(navController: NavController, tokenManager: TokenManager) {
                         Icon(
                             imageVector = Icons.Default.ArrowBack, 
                             contentDescription = "Geri",
-                            tint = Color.White
+                            tint = LoginTextColor
                         )
                     }
                 },
@@ -85,14 +85,19 @@ fun InsightsScreen(navController: NavController, tokenManager: TokenManager) {
                         Icon(
                             imageVector = Icons.Default.Refresh, 
                             contentDescription = "Yenile",
-                            tint = Color.White
+                            tint = LoginTextColor
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkSurface)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = LoginBackground,
+                    titleContentColor = LoginTextColor,
+                    navigationIconContentColor = LoginTextColor,
+                    actionIconContentColor = LoginTextColor
+                )
             )
         },
-        containerColor = DarkBackground
+        containerColor = LoginBackground
     ) { padding ->
         Column(
             modifier = Modifier
@@ -106,7 +111,7 @@ fun InsightsScreen(navController: NavController, tokenManager: TokenManager) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(DarkSurface, shape = RoundedCornerShape(12.dp))
+                    .background(PremiumWhiteCard, shape = RoundedCornerShape(12.dp))
                     .padding(4.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
@@ -117,7 +122,7 @@ fun InsightsScreen(navController: NavController, tokenManager: TokenManager) {
                         modifier = Modifier
                             .weight(1f)
                             .background(
-                                color = if (isSelected) AccentPrimary else Color.Transparent,
+                                color = if (isSelected) DarkTealPrimary else Color.Transparent,
                                 shape = RoundedCornerShape(10.dp)
                             )
                             .clickable { selectedDays = days }
@@ -126,7 +131,7 @@ fun InsightsScreen(navController: NavController, tokenManager: TokenManager) {
                     ) {
                         Text(
                             text = label,
-                            color = if (isSelected) Color.White else Color.Gray,
+                            color = if (isSelected) Color.White else LoginSecondaryText,
                             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                             fontSize = 14.sp
                         )
@@ -143,14 +148,23 @@ fun InsightsScreen(navController: NavController, tokenManager: TokenManager) {
             ) {
                 when (val state = uiState) {
                     is InsightsUiState.Loading -> {
-                        CircularProgressIndicator(color = AccentPrimary)
+                        CircularProgressIndicator(color = DarkTealPrimary)
                     }
                     is InsightsUiState.Empty -> {
                         EmptyStateView()
                     }
                     is InsightsUiState.Error -> {
-                        ErrorStateView(message = state.message) {
-                            viewModel.loadInsightsAndSummary(selectedDays)
+                        if (state.isPremiumRequired) {
+                            PremiumLockedCard(
+                                title = "Premium Analiz",
+                                description = "Gelişmiş iyi oluş analizleri ve kişisel raporlar Premium üyelikle açılır.",
+                                ctaText = "Premium'a Geç",
+                                onUpgradeClick = { navController.navigate("payment_methods") }
+                            )
+                        } else {
+                            ErrorStateView(message = state.message) {
+                                viewModel.loadInsightsAndSummary(selectedDays)
+                            }
                         }
                     }
                     is InsightsUiState.Success -> {
@@ -166,17 +180,17 @@ fun InsightsScreen(navController: NavController, tokenManager: TokenManager) {
                             
                             // 2. Emotion Distribution Card
                             item {
-                                EmotionDistributionCard(state.summary.emotion_distribution)
+                                EmotionDistributionCard(state.summary.sections.emotionDistribution)
                             }
 
                             // 3. Daily Trend Canvas Plot
                             item {
-                                DailyTrendLineChart(state.summary.daily_trend)
+                                DailyTrendLineChart(state.summary.sections.dailyTrend)
                             }
 
                             // 4. Crisis Comfort Indicator
                             item {
-                                CrisisTrendIndicator(state.summary.crisis_count)
+                                CrisisTrendIndicator(state.summary.overview.crisisCount)
                             }
 
                             // 5. Smart Interventions List Section
@@ -184,7 +198,7 @@ fun InsightsScreen(navController: NavController, tokenManager: TokenManager) {
                                 item {
                                     Text(
                                         text = "Önerilen Aktivite ve Destekler",
-                                        color = Color.White,
+                                        color = LoginTextColor,
                                         fontSize = 18.sp,
                                         fontWeight = FontWeight.Bold,
                                         modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
@@ -201,7 +215,7 @@ fun InsightsScreen(navController: NavController, tokenManager: TokenManager) {
                                 item {
                                     Text(
                                         text = "Davranışsal İçgörüler",
-                                        color = Color.White,
+                                        color = LoginTextColor,
                                         fontSize = 18.sp,
                                         fontWeight = FontWeight.Bold,
                                         modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
@@ -228,9 +242,15 @@ fun SmartInterventionCard(intervention: SmartIntervention) {
         else -> Color(0xFF86EFAC) to "Bedensel Mola"                            // Soft green
     }
 
+    val tagTextColor = when (intervention.severity.lowercase()) {
+        "priority_support" -> DangerRed
+        "supportive" -> Color(0xFFD97706)
+        else -> DarkTealPrimary
+    }
+
     Card(
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+        colors = CardDefaults.cardColors(containerColor = PremiumWhiteCard),
         border = BorderStroke(1.dp, color.copy(alpha = 0.25f)),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -255,13 +275,13 @@ fun SmartInterventionCard(intervention: SmartIntervention) {
             Column(modifier = Modifier.weight(1f)) {
                 // Header with soft severity tag
                 Surface(
-                    color = color.copy(alpha = 0.1f),
+                    color = color.copy(alpha = 0.15f),
                     shape = RoundedCornerShape(6.dp),
                     border = BorderStroke(0.5.dp, color.copy(alpha = 0.3f))
                 ) {
                     Text(
                         text = tagLabel,
-                        color = color,
+                        color = tagTextColor,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
@@ -273,7 +293,7 @@ fun SmartInterventionCard(intervention: SmartIntervention) {
                 // Title
                 Text(
                     text = intervention.title,
-                    color = Color.White,
+                color = LoginTextColor,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -283,7 +303,7 @@ fun SmartInterventionCard(intervention: SmartIntervention) {
                 // Description
                 Text(
                     text = intervention.description,
-                    color = Color.LightGray,
+                color = LoginSecondaryText,
                     fontSize = 12.sp,
                     lineHeight = 16.sp
                 )
@@ -293,8 +313,8 @@ fun SmartInterventionCard(intervention: SmartIntervention) {
 }
 
 @Composable
-fun DominantEmotionCard(summary: EmotionSummaryResponse) {
-    val rawEmotion = summary.dominant_emotion ?: "neutral"
+fun DominantEmotionCard(summary: WellnessDashboardResponse) {
+    val rawEmotion = summary.overview.dominantEmotion
     
     // Emotion mapping to supportive Turkish values
     val (emotionText, emotionDesc, color) = when (rawEmotion.lowercase()) {
@@ -327,14 +347,14 @@ fun DominantEmotionCard(summary: EmotionSummaryResponse) {
 
     Card(
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+        colors = CardDefaults.cardColors(containerColor = PremiumWhiteCard),
         border = BorderStroke(1.dp, color.copy(alpha = 0.25f)),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 text = "Haftalık Duygu Özeti",
-                color = Color.Gray,
+                color = LoginSecondaryText,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium
             )
@@ -348,7 +368,7 @@ fun DominantEmotionCard(summary: EmotionSummaryResponse) {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = emotionDesc,
-                color = Color.LightGray,
+                color = LoginSecondaryText,
                 fontSize = 13.sp,
                 lineHeight = 18.sp
             )
@@ -360,13 +380,13 @@ fun DominantEmotionCard(summary: EmotionSummaryResponse) {
 fun EmotionDistributionCard(distribution: Map<String, Int>) {
     Card(
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+        colors = CardDefaults.cardColors(containerColor = PremiumWhiteCard),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 text = "Duygu Dağılım Oranları",
-                color = Color.White,
+                color = LoginTextColor,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -390,8 +410,8 @@ fun EmotionDistributionCard(distribution: Map<String, Int>) {
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(text = name, color = Color.White, fontSize = 13.sp)
-                        Text(text = "%$pct ($count mesaj)", color = Color.Gray, fontSize = 12.sp)
+                        Text(text = name, color = LoginTextColor, fontSize = 13.sp)
+                        Text(text = "%$pct ($count mesaj)", color = LoginSecondaryText, fontSize = 12.sp)
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     
@@ -400,7 +420,7 @@ fun EmotionDistributionCard(distribution: Map<String, Int>) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(8.dp)
-                            .background(Color(0xFF334155), shape = RoundedCornerShape(4.dp))
+                            .background(Color.LightGray.copy(alpha = 0.2f), shape = RoundedCornerShape(4.dp))
                     ) {
                         Box(
                             modifier = Modifier
@@ -419,20 +439,20 @@ fun EmotionDistributionCard(distribution: Map<String, Int>) {
 fun DailyTrendLineChart(dailyTrend: List<DailyTrendItem>) {
     Card(
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+        colors = CardDefaults.cardColors(containerColor = PremiumWhiteCard),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 text = "Duygu Durum Zaman Çizelgesi",
-                color = Color.White,
+                color = LoginTextColor,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = "Zaman içindeki duygusal denge değişimi (Yükselen çizgiler huzur eğilimini, düşen çizgiler stres/hassasiyeti simgeler).",
-                color = Color.Gray,
+                color = LoginSecondaryText,
                 fontSize = 11.sp,
                 lineHeight = 15.sp
             )
@@ -440,7 +460,7 @@ fun DailyTrendLineChart(dailyTrend: List<DailyTrendItem>) {
 
             // Standardize sentiment scores for drawing: joy = 1.0, sadness = -0.5, anxiety/anger = -1.0
             val scores = dailyTrend.map { item ->
-                val total = item.total_count.coerceAtLeast(1)
+                val total = item.totalCount.coerceAtLeast(1)
                 var joy = 0
                 var stress = 0
                 var sad = 0
@@ -463,7 +483,7 @@ fun DailyTrendLineChart(dailyTrend: List<DailyTrendItem>) {
                         .height(140.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = "Trend grafiği için daha fazla gün etkileşimi gerekiyor.", color = Color.Gray, fontSize = 12.sp)
+                    Text(text = "Trend grafiği için daha fazla gün etkileşimi gerekiyor.", color = LoginSecondaryText, fontSize = 12.sp)
                 }
             } else {
                 // Compose Custom Drawing Canvas
@@ -491,7 +511,7 @@ fun DailyTrendLineChart(dailyTrend: List<DailyTrendItem>) {
                     for (i in 0..gridLines) {
                         val gridY = height * 0.1f + (i * height * 0.8f / gridLines)
                         drawLine(
-                            color = Color(0xFF334155).copy(alpha = 0.4f),
+                            color = Color.LightGray.copy(alpha = 0.4f),
                             start = Offset(0f, gridY),
                             end = Offset(width, gridY),
                             strokeWidth = 1.dp.toPx()
@@ -519,14 +539,14 @@ fun DailyTrendLineChart(dailyTrend: List<DailyTrendItem>) {
                     drawPath(
                         path = fillPath,
                         brush = Brush.verticalGradient(
-                            colors = listOf(AccentPrimary.copy(alpha = 0.25f), Color.Transparent)
+                            colors = listOf(DarkTealPrimary.copy(alpha = 0.25f), Color.Transparent)
                         )
                     )
 
                     // 4. Draw the actual curved line
                     drawPath(
                         path = path,
-                        color = AccentPrimary,
+                        color = DarkTealPrimary,
                         style = Stroke(width = 3.dp.toPx())
                     )
 
@@ -538,7 +558,7 @@ fun DailyTrendLineChart(dailyTrend: List<DailyTrendItem>) {
                             center = pt
                         )
                         drawCircle(
-                            color = AccentPrimary,
+                            color = DarkTealPrimary,
                             radius = 2.dp.toPx(),
                             center = pt
                         )
@@ -552,9 +572,9 @@ fun DailyTrendLineChart(dailyTrend: List<DailyTrendItem>) {
                 ) {
                     val firstDate = dailyTrend.first().date.substringAfter("-")
                     val lastDate = dailyTrend.last().date.substringAfter("-")
-                    Text(text = firstDate, color = Color.Gray, fontSize = 10.sp)
-                    Text(text = "Süreç Akışı", color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    Text(text = lastDate, color = Color.Gray, fontSize = 10.sp)
+                    Text(text = firstDate, color = LoginSecondaryText, fontSize = 10.sp)
+                    Text(text = "Süreç Akışı", color = LoginSecondaryText, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text(text = lastDate, color = LoginSecondaryText, fontSize = 10.sp)
                 }
             }
         }
@@ -579,7 +599,7 @@ fun CrisisTrendIndicator(crisisCount: Int) {
 
     Card(
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+        colors = CardDefaults.cardColors(containerColor = PremiumWhiteCard),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -610,7 +630,7 @@ fun CrisisTrendIndicator(crisisCount: Int) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = statusDesc,
-                    color = Color.LightGray,
+                color = LoginSecondaryText,
                     fontSize = 12.sp,
                     lineHeight = 16.sp
                 )
@@ -627,9 +647,15 @@ fun BehavioralInsightCard(insight: BehavioralInsight) {
         else -> Color(0xFF86EFAC) to "Olumlu Gelişim"
     }
 
+    val tagTextColor = when (insight.severity.lowercase()) {
+        "high" -> DangerRed
+        "medium" -> Color(0xFFD97706)
+        else -> DarkTealPrimary
+    }
+
     Card(
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+        colors = CardDefaults.cardColors(containerColor = PremiumWhiteCard),
         border = BorderStroke(1.dp, severityColor.copy(alpha = 0.25f)),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -648,7 +674,7 @@ fun BehavioralInsightCard(insight: BehavioralInsight) {
                 ) {
                     Text(
                         text = tagLabel,
-                        color = severityColor,
+                        color = tagTextColor,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
@@ -658,7 +684,7 @@ fun BehavioralInsightCard(insight: BehavioralInsight) {
                 val confidencePct = (insight.confidence * 100).toInt()
                 Text(
                     text = "%$confidencePct Tutarlılık",
-                    color = Color.LightGray,
+                    color = LoginSecondaryText,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium
                 )
@@ -668,7 +694,7 @@ fun BehavioralInsightCard(insight: BehavioralInsight) {
 
             Text(
                 text = insight.title,
-                color = Color.White,
+                color = LoginTextColor,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -677,7 +703,7 @@ fun BehavioralInsightCard(insight: BehavioralInsight) {
 
             Text(
                 text = insight.description,
-                color = Color.LightGray,
+                color = LoginSecondaryText,
                 fontSize = 13.sp,
                 lineHeight = 18.sp
             )
@@ -685,14 +711,14 @@ fun BehavioralInsightCard(insight: BehavioralInsight) {
             Spacer(modifier = Modifier.height(12.dp))
 
             val displayDate = try {
-                insight.created_at.substringBefore("T")
+                insight.createdAt.substringBefore("T")
             } catch (e: Exception) {
-                insight.created_at
+                insight.createdAt
             }
             
             Text(
                 text = "Analiz Tarihi: $displayDate",
-                color = Color.Gray,
+                color = LoginSecondaryText,
                 fontSize = 10.sp,
                 textAlign = TextAlign.End,
                 modifier = Modifier.fillMaxWidth()
@@ -711,22 +737,22 @@ fun EmptyStateView() {
         verticalArrangement = Arrangement.Center
     ) {
         Icon(
-            imageVector = Icons.Default.TrendingUp,
+            imageVector = Icons.Default.Favorite,
             contentDescription = "Veri Aranıyor",
-            tint = AccentPrimary.copy(alpha = 0.6f),
+            tint = DarkTealPrimary.copy(alpha = 0.6f),
             modifier = Modifier.size(64.dp)
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
             text = "Yolculuk Başlıyor...",
-            color = Color.White,
+            color = LoginTextColor,
             fontWeight = FontWeight.Bold,
             fontSize = 18.sp
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = "Henüz yeterli veri oluşmadı. Sohbet ettikçe duygu durum örüntüleriniz analiz edilecek ve grafikleriniz burada görünecek.",
-            color = Color.Gray,
+            color = LoginSecondaryText,
             fontSize = 14.sp,
             textAlign = TextAlign.Center,
             lineHeight = 20.sp
@@ -752,14 +778,14 @@ fun ErrorStateView(message: String, onRetry: () -> Unit) {
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = message,
-            color = Color.LightGray,
+            color = LoginSecondaryText,
             fontSize = 14.sp,
             textAlign = TextAlign.Center
         )
         Spacer(modifier = Modifier.height(16.dp))
         Button(
             onClick = onRetry,
-            colors = ButtonDefaults.buttonColors(containerColor = AccentPrimary)
+            colors = ButtonDefaults.buttonColors(containerColor = DarkTealPrimary)
         ) {
             Text("Tekrar Dene", color = Color.White)
         }

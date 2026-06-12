@@ -19,6 +19,7 @@ class TestAIOrchestration(unittest.TestCase):
     def setUp(self):
         # Backup original settings
         self.original_primary_provider = settings.AI_PRIMARY_PROVIDER
+        self.original_secondary_provider = settings.AI_SECONDARY_PROVIDER
         self.original_fallback_provider = settings.AI_FALLBACK_PROVIDER
         self.original_primary_model = settings.AI_PRIMARY_MODEL
         self.original_fallback_model = settings.AI_FALLBACK_MODEL
@@ -26,6 +27,9 @@ class TestAIOrchestration(unittest.TestCase):
         self.original_max_retries = settings.AI_MAX_RETRIES
         self.original_cost_limit = settings.AI_COST_LIMIT_DAILY
         self.original_api_key = settings.OPENAI_API_KEY
+
+        # Disable secondary provider for legacy orchestrator tests
+        settings.AI_SECONDARY_PROVIDER = "none"
 
         # Reset orchestrator internal in-memory state
         orch._in_memory_consecutive_failures = 0
@@ -52,6 +56,7 @@ class TestAIOrchestration(unittest.TestCase):
     def tearDown(self):
         # Restore settings
         settings.AI_PRIMARY_PROVIDER = self.original_primary_provider
+        settings.AI_SECONDARY_PROVIDER = self.original_secondary_provider
         settings.AI_FALLBACK_PROVIDER = self.original_fallback_provider
         settings.AI_PRIMARY_MODEL = self.original_primary_model
         settings.AI_FALLBACK_MODEL = self.original_fallback_model

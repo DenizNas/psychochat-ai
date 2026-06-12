@@ -27,11 +27,11 @@ assert_eq("whitespace",    check_empty("   "),   ("empty_response", 1.0))
 assert_eq("valid text",    check_empty("Merhaba bu bir test mesajıdır."), None)
 
 print("\n=== check_too_short ===")
-assert_eq("too short normal",  check_too_short("Anlıyorum.", False), ("too_short", 0.4))
+assert_eq("too short normal",  check_too_short("Anlıyorum.", False), ("too_short", 0.5))
 long_enough = "Bu bir test mesajı olup yeterince uzundur ne düşünüyorsunuz acaba bakıyorum"
 assert_eq("long enough normal", check_too_short(long_enough, False), None)
 crisis_short = "Güvende ol lütfen yardım al"
-assert_eq("too short crisis",  check_too_short(crisis_short, True), ("too_short", 0.4))
+assert_eq("too short crisis",  check_too_short(crisis_short, True), ("too_short", 0.5))
 
 print("\n=== check_repetitive ===")
 repetitive = "tamam tamam tamam tamam tamam tamam tamam tamam tamam tamam"
@@ -40,7 +40,7 @@ normal_text = "Seni duyabiliyorum ve bu süreçte yanındayım her zaman."
 assert_eq("non-repetitive", check_repetitive(normal_text), None)
 
 print("\n=== check_generic ===")
-assert_eq("generic opener short", check_generic("anlıyorum"),  ("generic_response", 0.2))
+assert_eq("generic opener short", check_generic("anlıyorum"),  ("generic_response", 0.1))
 assert_eq("generic but long",     check_generic("anlıyorum bu durumun seni çok zorladığını ve seninle bu süreci paylaşmak istiyorum"), None)
 assert_eq("non-generic",          check_generic("Şu an çok zor bir dönemden geçiyor olabilirsin."), None)
 

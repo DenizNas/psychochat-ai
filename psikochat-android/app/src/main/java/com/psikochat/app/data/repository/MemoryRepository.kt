@@ -41,15 +41,23 @@ class MemoryRepository(private val api: PsikoApi) {
         return when (e) {
             is HttpException -> {
                 val errorBody = e.response()?.errorBody()?.string()
+                var isPremium = false
                 val parsedMessage = try {
                     if (!errorBody.isNullOrBlank()) {
                         val json = JSONObject(errorBody)
-                        if (json.has("detail")) json.getString("detail") else defaultMessage
+                        if (json.optString("error_code") == "PREMIUM_MEMBER_REQUIRED") {
+                            isPremium = true
+                        }
+                        when {
+                            json.has("message") -> json.getString("message")
+                            json.has("detail") -> json.getString("detail")
+                            else -> defaultMessage
+                        }
                     } else defaultMessage
                 } catch (ex: Exception) {
                     defaultMessage
                 }
-                Resource.Error(parsedMessage)
+                Resource.Error(parsedMessage, isPremiumRequired = isPremium || e.code() == 403)
             }
             is IOException -> Resource.Error("Sunucuya bağlanılamadı. İnternet bağlantınızı kontrol edin.")
             else -> Resource.Error(e.message ?: defaultMessage)

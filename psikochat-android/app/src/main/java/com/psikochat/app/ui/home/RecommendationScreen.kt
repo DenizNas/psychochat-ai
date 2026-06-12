@@ -33,6 +33,7 @@ import com.psikochat.app.data.local.TokenManager
 import com.psikochat.app.data.repository.RecommendationRepository
 import com.psikochat.app.data.model.WellnessRecommendation
 import com.psikochat.app.data.model.Resource
+import com.psikochat.app.ui.components.PremiumLockedCard
 import com.psikochat.app.ui.theme.*
 import kotlinx.coroutines.launch
 
@@ -149,10 +150,20 @@ fun RecommendationScreen(
                 }
 
                 is Resource.Error -> {
-                    RecommendationErrorState(
-                        message = (state as Resource.Error).message ?: "Öneriler alınamadı.",
-                        onRetry = { viewModel.loadRecommendations() }
-                    )
+                    val err = state as Resource.Error
+                    if (err.isPremiumRequired) {
+                        PremiumLockedCard(
+                            title = "Premium Öneriler",
+                            description = "Sana özel, derinlikli wellness ve iyi oluş önerileri Premium üyelikle açılır.",
+                            ctaText = "Premium'a Geç",
+                            onUpgradeClick = { navController.navigate("payment_methods") }
+                        )
+                    } else {
+                        RecommendationErrorState(
+                            message = err.message ?: "Öneriler alınamadı.",
+                            onRetry = { viewModel.loadRecommendations() }
+                        )
+                    }
                 }
 
                 is Resource.Success -> {

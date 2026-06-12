@@ -28,6 +28,7 @@ import com.psikochat.app.data.local.TokenManager
 import com.psikochat.app.data.model.Resource
 import com.psikochat.app.data.repository.ProfileRepository
 import com.psikochat.app.ui.theme.*
+import com.psikochat.app.ui.components.*
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -37,7 +38,7 @@ fun SettingsScreen(navController: NavController, tokenManager: TokenManager) {
     val repository = ProfileRepository(api)
     val factory = object : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return ProfileViewModel(repository) as T
+            return ProfileViewModel(repository, tokenManager) as T
         }
     }
     val viewModel: ProfileViewModel = viewModel(factory = factory)
@@ -81,57 +82,7 @@ fun SettingsScreen(navController: NavController, tokenManager: TokenManager) {
             )
         },
         bottomBar = {
-            NavigationBar(
-                containerColor = Color.White,
-                tonalElevation = 8.dp,
-                modifier = Modifier.height(80.dp)
-            ) {
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Home, contentDescription = null) },
-                    label = { Text("Ana Sayfa", fontSize = 10.sp) },
-                    selected = false,
-                    onClick = { navController.navigate("home") { popUpTo("home") { inclusive = true } } }
-                )
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Share, contentDescription = null) },
-                    label = { Text("Terapi", fontSize = 10.sp) },
-                    selected = false,
-                    onClick = { }
-                )
-                
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clickable { navController.navigate("chat") },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Surface(
-                            shape = CircleShape,
-                            color = LoginButton,
-                            modifier = Modifier.size(44.dp),
-                            shadowElevation = 2.dp
-                        ) {
-                            Icon(Icons.Default.Face, contentDescription = "PsikoChat", tint = Color.White, modifier = Modifier.padding(10.dp))
-                        }
-                        Text("PsikoChat", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = LoginButton)
-                    }
-                }
-
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Person, contentDescription = null) },
-                    label = { Text("Profilim", fontSize = 10.sp) },
-                    selected = false,
-                    onClick = { navController.navigate("profile") }
-                )
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                    label = { Text("Ayarlar", fontSize = 10.sp) },
-                    selected = true,
-                    onClick = { }
-                )
-            }
+            PremiumBottomNavigation(navController = navController, currentScreen = "settings")
         },
         containerColor = LoginBackground
     ) { padding ->
@@ -155,142 +106,127 @@ fun SettingsScreen(navController: NavController, tokenManager: TokenManager) {
                         Spacer(modifier = Modifier.height(24.dp))
 
                         // Uygulama Ayarları Grubu
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(24.dp),
-                            color = Color.White.copy(alpha = 0.9f)
+                        PremiumCard(
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Text("Görünüm ve Dil", fontWeight = FontWeight.Bold, color = LoginTextColor, modifier = Modifier.padding(bottom = 8.dp))
-                                
-                                SettingClickItem(
-                                    Icons.Default.Build, 
-                                    "Tema", 
-                                    when(profile.themePreference) {
-                                        "light" -> "Açık"
-                                        "dark" -> "Koyu"
-                                        else -> "Sistem"
-                                    }
-                                ) { showThemeDialog = true }
-                                
-                                Divider(color = Color.LightGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 8.dp))
-                                
-                                SettingClickItem(
-                                    Icons.Default.Info, 
-                                    "Uygulama Dili", 
-                                    if(profile.preferredLanguage == "tr") "Türkçe" else "English"
-                                ) { showLanguageDialog = true }
-                            }
+                            Text("Görünüm ve Dil", fontWeight = FontWeight.Bold, color = LoginTextColor, modifier = Modifier.padding(bottom = 8.dp))
+                            
+                            SettingClickItem(
+                                Icons.Default.Build, 
+                                "Tema", 
+                                when(profile.themePreference) {
+                                    "light" -> "Açık"
+                                    "dark" -> "Koyu"
+                                    else -> "Sistem"
+                                }
+                            ) { showThemeDialog = true }
+                            
+                            Divider(color = Color.LightGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 8.dp))
+                            
+                            SettingClickItem(
+                                Icons.Default.Info, 
+                                "Uygulama Dili", 
+                                if(profile.preferredLanguage == "tr") "Türkçe" else "English"
+                            ) { showLanguageDialog = true }
                         }
 
                         Spacer(modifier = Modifier.height(24.dp))
 
                         // Tercihler Grubu
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(24.dp),
-                            color = Color.White.copy(alpha = 0.9f)
+                        PremiumCard(
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Text("Tercihler ve Gizlilik", fontWeight = FontWeight.Bold, color = LoginTextColor, modifier = Modifier.padding(bottom = 8.dp))
-                                
-                                SettingSwitchItem(
-                                    Icons.Default.Notifications, 
-                                    "Bildirimler", 
-                                    profile.notificationsEnabled
-                                ) { viewModel.updateProfile(notifications = it) }
-                                
-                                Divider(color = Color.LightGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 8.dp))
-                                
-                                SettingSwitchItem(
-                                    Icons.Default.Lock, 
-                                    "Gizlilik Modu", 
-                                    profile.privacyMode
-                                ) { viewModel.updateProfile(privacy = it) }
-                                
-                                Divider(color = Color.LightGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 8.dp))
-                                
-                                SettingClickItem(
-                                    Icons.Default.List, 
-                                    "Hatırlanan Bilgiler (Hafıza)", 
-                                    null
-                                ) { navController.navigate("memory_settings") }
+                            Text("Tercihler ve Gizlilik", fontWeight = FontWeight.Bold, color = LoginTextColor, modifier = Modifier.padding(bottom = 8.dp))
+                            
+                            SettingSwitchItem(
+                                Icons.Default.Notifications, 
+                                "Bildirimler", 
+                                profile.notificationsEnabled
+                            ) { viewModel.updateProfile(notifications = it) }
+                            
+                            Divider(color = Color.LightGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 8.dp))
+                            
+                            SettingSwitchItem(
+                                Icons.Default.Lock, 
+                                "Gizlilik Modu", 
+                                profile.privacyMode
+                            ) { viewModel.updateProfile(privacy = it) }
+                            
+                            Divider(color = Color.LightGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 8.dp))
+                            
+                            SettingClickItem(
+                                Icons.Default.List, 
+                                "Hatırlanan Bilgiler (Hafıza)", 
+                                null
+                            ) { navController.navigate("memory_settings") }
 
-                                Divider(color = Color.LightGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 8.dp))
+                            Divider(color = Color.LightGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 8.dp))
 
-                                SettingClickItem(
-                                    Icons.Default.Lock, 
-                                    "Kişisel Veriler ve Onaylar", 
-                                    null
-                                ) { navController.navigate("privacy_data") }
-                            }
+                            SettingClickItem(
+                                Icons.Default.Lock, 
+                                "Kişisel Veriler ve Onaylar", 
+                                null
+                            ) { navController.navigate("privacy_data") }
                         }
 
                         Spacer(modifier = Modifier.height(24.dp))
 
                         // AI Özelleştirme Grubu
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(24.dp),
-                            color = Color.White.copy(alpha = 0.9f)
+                        PremiumCard(
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Text("AI Özelleştirme", fontWeight = FontWeight.Bold, color = LoginTextColor, modifier = Modifier.padding(bottom = 8.dp))
-                                
-                                SettingClickItem(
-                                    Icons.Default.List, 
-                                    "Yanıt Uzunluğu", 
-                                    when(profile.answerLengthPreference) {
-                                        "short" -> "Kısa"
-                                        "detailed" -> "Detaylı"
-                                        else -> "Normal"
-                                    }
-                                ) { showAnswerLengthDialog = true }
-                                
-                                Divider(color = Color.LightGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 8.dp))
-                                
-                                SettingClickItem(
-                                    Icons.Default.Star, 
-                                    "Yanıt Tarzı", 
-                                    when(profile.responseStyle) {
-                                        "direct" -> "Doğrudan"
-                                        "empathetic" -> "Empatik"
-                                        else -> "Destekleyici"
-                                    }
-                                ) { navController.navigate("profile") }
-                            }
+                            Text("AI Özelleştirme", fontWeight = FontWeight.Bold, color = LoginTextColor, modifier = Modifier.padding(bottom = 8.dp))
+                            
+                            SettingClickItem(
+                                Icons.Default.List, 
+                                "Yanıt Uzunluğu", 
+                                when(profile.answerLengthPreference) {
+                                    "short" -> "Kısa"
+                                    "detailed" -> "Detaylı"
+                                    else -> "Normal"
+                                }
+                            ) { showAnswerLengthDialog = true }
+                            
+                            Divider(color = Color.LightGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 8.dp))
+                            
+                            SettingClickItem(
+                                Icons.Default.Star, 
+                                "Yanıt Tarzı", 
+                                when(profile.responseStyle) {
+                                    "direct" -> "Doğrudan"
+                                    "empathetic" -> "Empatik"
+                                    else -> "Destekleyici"
+                                }
+                            ) { navController.navigate("profile") }
                         }
 
                         Spacer(modifier = Modifier.height(24.dp))
 
                         // Hesap Grubu
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(24.dp),
-                            color = Color.White.copy(alpha = 0.9f)
+                        PremiumCard(
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Text("Hesap İşlemleri", fontWeight = FontWeight.Bold, color = LoginTextColor, modifier = Modifier.padding(bottom = 8.dp))
-                                
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { 
-                                            scope.launch {
-                                                tokenManager.clearAuthData()
-                                                navController.navigate("auth_graph") {
-                                                    popUpTo("main_graph") { inclusive = true }
-                                                    launchSingleTop = true
-                                                }
+                            Text("Hesap İşlemleri", fontWeight = FontWeight.Bold, color = LoginTextColor, modifier = Modifier.padding(bottom = 8.dp))
+                            
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { 
+                                        scope.launch {
+                                            tokenManager.clearAuthData()
+                                            ProfileViewModel.clearCache()
+                                            navController.navigate("auth_graph") {
+                                                popUpTo("main_graph") { inclusive = true }
+                                                launchSingleTop = true
                                             }
                                         }
-                                        .padding(vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(Icons.Default.ExitToApp, contentDescription = null, tint = Color.Red)
-                                    Spacer(modifier = Modifier.width(16.dp))
-                                    Text("Oturumu Kapat", color = Color.Red, fontWeight = FontWeight.Medium)
-                                }
+                                    }
+                                    .padding(vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.ExitToApp, contentDescription = null, tint = Color.Red)
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Text("Oturumu Kapat", color = Color.Red, fontWeight = FontWeight.Medium)
                             }
                         }
                         
@@ -355,18 +291,32 @@ fun SettingsScreen(navController: NavController, tokenManager: TokenManager) {
                             onDismissRequest = { showAnswerLengthDialog = false },
                             title = { Text("Yanıt Uzunluğu Seçin") },
                             text = {
-                                Column {
-                                    listOf("short" to "Kısa (1-2 Cümle)", "medium" to "Normal (3-5 Cümle)", "detailed" to "Detaylı (Kapsamlı)").forEach { (code, label) ->
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    listOf(
+                                        Triple("short", "Kısa (1-2 Cümle)", "1-2 cümlelik kısa yanıtlar."),
+                                        Triple("medium", "Normal (3-5 Cümle)", "3-5 cümlelik dengeli yanıtlar."),
+                                        Triple("detailed", "Detaylı (Kapsamlı)", "Daha kapsamlı ve açıklayıcı yanıtlar.")
+                                    ).forEach { (code, label, desc) ->
                                         Row(
-                                            modifier = Modifier.fillMaxWidth().clickable { 
-                                                viewModel.updateProfile(answerLength = code)
-                                                showAnswerLengthDialog = false
-                                            }.padding(vertical = 12.dp),
-                                            verticalAlignment = Alignment.CenterVertically
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable { 
+                                                    viewModel.updateProfile(answerLength = code)
+                                                    showAnswerLengthDialog = false
+                                                }
+                                                .padding(vertical = 6.dp),
+                                            verticalAlignment = Alignment.Top
                                         ) {
-                                            RadioButton(selected = profile.answerLengthPreference == code, onClick = null)
+                                            RadioButton(
+                                                selected = profile.answerLengthPreference == code,
+                                                onClick = null,
+                                                modifier = Modifier.padding(top = 2.dp)
+                                            )
                                             Spacer(modifier = Modifier.width(12.dp))
-                                            Text(label)
+                                            Column {
+                                                Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = LoginTextColor)
+                                                Text(desc, style = MaterialTheme.typography.labelSmall, color = LoginSecondaryText, lineHeight = 14.sp)
+                                            }
                                         }
                                     }
                                 }

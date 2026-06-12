@@ -1,5 +1,6 @@
 package com.psikochat.app.data.repository
 
+import android.util.Log
 import com.psikochat.app.data.api.PsikoApi
 import com.psikochat.app.data.model.ChatRequest
 import com.psikochat.app.data.model.ChatResponse
@@ -41,12 +42,14 @@ class ChatRepository(
 
     /**
      * Refreshes the local cache with the latest messages from the server.
+     * Preserves any rows with state="pending" so offline-queued messages
+     * are not wiped while waiting for OfflineSyncWorker to replay them.
      */
     suspend fun refreshHistory(userId: String): Resource<List<HistoryItem>> {
         return try {
             val res = api.getHistory()
-            // Clear local cache for this user and replace with fresh data
-            chatDao.clearCachedMessages(userId)
+            // Delete only synced/failed rows — preserve pending ones so offline bubbles stay visible
+            chatDao.clearNonPendingMessages(userId)
             val dbEntities = res.map {
                 CachedChatMessage(
                     userId = userId,
@@ -57,10 +60,45 @@ class ChatRepository(
                 )
             }
             chatDao.insertCachedMessages(dbEntities)
+            Log.d("ChatRepository", "REFRESH_HISTORY | inserted ${dbEntities.size} rows | pending preserved")
             Resource.Success(res)
         } catch (e: Exception) {
             parseError(e, "Sohbet geçmişi yenilenemedi")
         }
+    }
+
+    /**
+     * Saves a user message to the local Room cache immediately.
+     */
+    suspend fun saveUserMessageLocally(userId: String, text: String, state: String = "synced"): String {
+        val localId = UUID.randomUUID().toString()
+        val timestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(Date())
+        val userCachedMsg = CachedChatMessage(
+            userId = userId,
+            role = "user",
+            text = text,
+            timestamp = timestamp,
+            localId = localId,
+            state = state
+        )
+        val rowId = chatDao.insertCachedMessage(userCachedMsg)
+        Log.d("ChatRepository", "SAVE_LOCAL | role=user | state=$state | localId=${localId.take(8)} | rowId=$rowId")
+        return localId
+    }
+
+    /**
+     * Saves an assistant message to the local Room cache immediately.
+     */
+    suspend fun saveAssistantMessageLocally(userId: String, text: String) {
+        val timestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(Date())
+        val assistantCachedMsg = CachedChatMessage(
+            userId = userId,
+            role = "assistant",
+            text = text,
+            timestamp = timestamp,
+            state = "synced"
+        )
+        chatDao.insertCachedMessage(assistantCachedMsg)
     }
 
     /**
@@ -72,13 +110,15 @@ class ChatRepository(
         userId: String,
         text: String,
         language: String = "tr",
-        isOnline: Boolean
+        isOnline: Boolean,
+        isFallback: Boolean = false,
+        fallbackLocalId: String? = null
     ): Resource<ChatResponse> {
-        val localId = UUID.randomUUID().toString()
+        val localId = fallbackLocalId ?: UUID.randomUUID().toString()
         val idempotencyKey = UUID.randomUUID().toString()
-        val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+        val timestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(Date())
 
-        // 1. Save locally as pending first (Optimistic insertion)
+        var localRowId = -1L
         val userCachedMsg = CachedChatMessage(
             userId = userId,
             role = "user",
@@ -87,7 +127,14 @@ class ChatRepository(
             localId = localId,
             state = "pending"
         )
-        chatDao.insertCachedMessage(userCachedMsg)
+        if (!isFallback) {
+            // Save locally as pending first (Optimistic insertion)
+            // Capture the auto-generated row id so all subsequent updates target the same row.
+            localRowId = chatDao.insertCachedMessage(userCachedMsg)
+            Log.d("ChatRepository", "RESILIENT | inserted optimistic row | localId=${localId.take(8)} | rowId=$localRowId")
+        } else {
+            Log.d("ChatRepository", "RESILIENT | isFallback=true | localId=${localId.take(8)} | skipping insert")
+        }
 
         if (isOnline) {
             return try {
@@ -97,8 +144,12 @@ class ChatRepository(
                 )
                 
                 // Update local cached user message state to synced
-                val syncedUserMsg = userCachedMsg.copy(state = "synced")
-                chatDao.insertCachedMessage(syncedUserMsg)
+                if (isFallback) {
+                    chatDao.updateCachedMessageStateByLocalId(localId, "synced")
+                } else {
+                    // Use @Update which matches on primary key — no duplicate row created
+                    chatDao.updateCachedMessage(userCachedMsg.copy(id = localRowId.toInt(), state = "synced"))
+                }
 
                 // Insert assistant response directly into cache
                 chatDao.insertCachedMessage(
@@ -106,7 +157,7 @@ class ChatRepository(
                         userId = userId,
                         role = "assistant",
                         text = res.response,
-                        timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()),
+                        timestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(Date()),
                         state = "synced"
                     )
                 )
@@ -126,11 +177,20 @@ class ChatRepository(
                     chatDao.insertPendingMessage(pendingMsg)
                     
                     // Mark cache as queued offline
-                    chatDao.insertCachedMessage(userCachedMsg.copy(state = "pending"))
+                    if (isFallback) {
+                        chatDao.updateCachedMessageStateByLocalId(localId, "pending")
+                    } else {
+                        // Row already exists with id=localRowId; update state only — no re-insert
+                        chatDao.updateCachedMessage(userCachedMsg.copy(id = localRowId.toInt(), state = "pending"))
+                    }
                     Resource.Error("Sunucuya bağlanılamadı. Çevrimdışı kuyruğa eklendi.")
                 } else {
                     // Critical validation failure (e.g. 400 Bad Request): mark as failed
-                    chatDao.insertCachedMessage(userCachedMsg.copy(state = "failed"))
+                    if (isFallback) {
+                        chatDao.updateCachedMessageStateByLocalId(localId, "failed")
+                    } else {
+                        chatDao.updateCachedMessage(userCachedMsg.copy(id = localRowId.toInt(), state = "failed"))
+                    }
                     parseError(e, "Mesaj gönderilemedi")
                 }
             }
@@ -146,6 +206,12 @@ class ChatRepository(
                 idempotencyKey = idempotencyKey
             )
             chatDao.insertPendingMessage(pendingMsg)
+            if (isFallback) {
+                chatDao.updateCachedMessageStateByLocalId(localId, "pending")
+            } else {
+                // Row was inserted as "pending" — update to confirm state is correct with real id
+                chatDao.updateCachedMessage(userCachedMsg.copy(id = localRowId.toInt(), state = "pending"))
+            }
             return Resource.Error("Çevrimdışı kaydedildi. İnternet geldiğinde otomatik gönderilecektir.")
         }
     }
@@ -160,7 +226,11 @@ class ChatRepository(
                 val parsedMessage = try {
                     if (!errorBody.isNullOrBlank()) {
                         val json = JSONObject(errorBody)
-                        if (json.has("detail")) json.getString("detail") else defaultMessage
+                        when {
+                            json.has("message") -> json.getString("message")
+                            json.has("detail") -> json.getString("detail")
+                            else -> defaultMessage
+                        }
                     } else defaultMessage
                 } catch (ex: Exception) {
                     defaultMessage

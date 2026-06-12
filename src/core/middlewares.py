@@ -105,6 +105,12 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         elif path.startswith("/analytics/"):
             limit_type = "analytics"
             rate_limit_key = user_id if user_id != "anonymous" else client_ip
+        elif path == "/subscriptions/checkout":
+            limit_type = "checkout"
+            rate_limit_key = user_id if user_id != "anonymous" else client_ip
+        elif path == "/payments/webhook/iyzico":
+            limit_type = "payment_webhook"
+            rate_limit_key = client_ip
         elif path == "/health":
             limit_type = None  # health is bypass / unlimited
 
@@ -284,7 +290,16 @@ class SecureHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-XSS-Protection"] = "1; mode=block"
         
         # Content Security Policy (FastAPI endpointleri için)
-        response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';"
+        path = request.url.path
+        if path in ["/docs", "/redoc"]:
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+                "img-src 'self' data: https://fastapi.tiangolo.com;"
+            )
+        else:
+            response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';"
         
         # Referrer kontrolü
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"

@@ -33,6 +33,9 @@ import com.psikochat.app.data.model.MemoryConsolidationResponse
 import com.psikochat.app.data.model.Resource
 import com.psikochat.app.data.repository.MemoryRepository
 import com.psikochat.app.data.repository.ProfileRepository
+import com.psikochat.app.data.repository.SubscriptionRepository
+import com.psikochat.app.ui.home.SubscriptionViewModel
+import com.psikochat.app.ui.components.PremiumLockedCard
 import com.psikochat.app.ui.theme.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -122,6 +125,20 @@ fun MemorySettingsScreen(navController: NavController, tokenManager: TokenManage
     }
     val viewModel: MemorySettingsViewModel = viewModel(factory = factory)
 
+    val subscriptionRepo = remember { SubscriptionRepository(api) }
+    val subscriptionFactory = remember {
+        object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                return SubscriptionViewModel(subscriptionRepo) as T
+            }
+        }
+    }
+    val subscriptionViewModel: SubscriptionViewModel = viewModel(factory = subscriptionFactory)
+    val isPremiumUser by subscriptionViewModel.isPremium.collectAsState()
+    val subscriptionError by subscriptionViewModel.errorMessage.collectAsState()
+    val canSeeMemories = isPremiumUser || (subscriptionError != null)
+
     val memoriesState by viewModel.memoriesState.collectAsState()
     val profileState by viewModel.profileState.collectAsState()
     val deleteState by viewModel.deleteState.collectAsState()
@@ -172,8 +189,14 @@ fun MemorySettingsScreen(navController: NavController, tokenManager: TokenManage
                 },
                 actions = {
                     IconButton(
-                        onClick = { viewModel.refreshMemories() },
-                        enabled = refreshState !is Resource.Loading && memoriesState is Resource.Success
+                        onClick = {
+                            if (canSeeMemories) {
+                                viewModel.refreshMemories()
+                            } else {
+                                navController.navigate("payment_methods")
+                            }
+                        },
+                        enabled = (refreshState !is Resource.Loading && memoriesState is Resource.Success) || !canSeeMemories
                     ) {
                         if (refreshState is Resource.Loading) {
                             CircularProgressIndicator(modifier = Modifier.size(20.dp), color = LoginButton, strokeWidth = 2.dp)
@@ -215,40 +238,50 @@ fun MemorySettingsScreen(navController: NavController, tokenManager: TokenManage
                             .padding(horizontal = 24.dp)
                     ) {
                         // Premium Wording Card
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 12.dp),
-                            shape = RoundedCornerShape(20.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                        if (!canSeeMemories) {
+                            PremiumLockedCard(
+                                title = "Premium Bellek",
+                                description = "Hatırlanan bilgileri ayrıntılı görüntüleme ve hafızayı optimize etme Premium üyelikle açılır.",
+                                ctaText = "Premium'a Geç",
+                                onUpgradeClick = { navController.navigate("payment_methods") }
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                        } else {
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp),
+                                shape = RoundedCornerShape(20.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color.White)
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .clip(CircleShape)
-                                        .background(LoginButton.copy(alpha = 0.1f)),
-                                    contentAlignment = Alignment.Center
+                                Row(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(Icons.Default.Star, contentDescription = null, tint = LoginButton, modifier = Modifier.size(20.dp))
-                                }
-                                Spacer(modifier = Modifier.width(16.dp))
-                                Column {
-                                    Text(
-                                        text = "Kişiselleştirilmiş Deneyim",
-                                        fontWeight = FontWeight.Bold,
-                                        color = LoginTextColor,
-                                        fontSize = 14.sp
-                                    )
-                                    Text(
-                                        text = "Bunları senin deneyimini kişiselleştirmek için hatırlıyorum.",
-                                        color = LoginSecondaryText,
-                                        fontSize = 12.sp,
-                                        lineHeight = 16.sp
-                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape)
+                                            .background(LoginButton.copy(alpha = 0.1f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Default.Star, contentDescription = null, tint = LoginButton, modifier = Modifier.size(20.dp))
+                                    }
+                                    Spacer(modifier = Modifier.width(16.dp))
+                                    Column {
+                                        Text(
+                                            text = "Kişiselleştirilmiş Deneyim",
+                                            fontWeight = FontWeight.Bold,
+                                            color = LoginTextColor,
+                                            fontSize = 14.sp
+                                        )
+                                        Text(
+                                            text = "Bunları senin deneyimini kişiselleştirmek için hatırlıyorum.",
+                                            color = LoginSecondaryText,
+                                            fontSize = 12.sp,
+                                            lineHeight = 16.sp
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -324,6 +357,7 @@ fun MemorySettingsScreen(navController: NavController, tokenManager: TokenManage
                                         items(memories, key = { it.id }) { memory ->
                                             MemoryItemRow(
                                                 memory = memory,
+                                                canSeeContent = canSeeMemories,
                                                 onDelete = { memoryToDelete = memory }
                                             )
                                         }
@@ -397,7 +431,7 @@ fun MemorySettingsScreen(navController: NavController, tokenManager: TokenManage
 // ── Helper UI Components ──────────────────────────────────────────────────
 
 @Composable
-fun MemoryItemRow(memory: UserMemory, onDelete: () -> Unit) {
+fun MemoryItemRow(memory: UserMemory, canSeeContent: Boolean, onDelete: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -429,7 +463,7 @@ fun MemoryItemRow(memory: UserMemory, onDelete: () -> Unit) {
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = memory.memoryText,
+                    text = if (canSeeContent) memory.memoryText else "•••••••• (Premium ile Gör)",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
                     color = LoginTextColor,
@@ -449,6 +483,7 @@ fun MemoryItemRow(memory: UserMemory, onDelete: () -> Unit) {
     }
 }
 
+@Composable
 private fun getCategoryMeta(type: String): Pair<ImageVector, Color> {
     return when (type) {
         "preference" -> Icons.Default.ThumbUp to LoginButton

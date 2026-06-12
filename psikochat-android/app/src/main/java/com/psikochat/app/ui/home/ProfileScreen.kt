@@ -3,6 +3,7 @@ package com.psikochat.app.ui.home
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -10,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -33,6 +35,7 @@ import com.psikochat.app.data.local.TokenManager
 import com.psikochat.app.data.model.Resource
 import com.psikochat.app.data.repository.ProfileRepository
 import com.psikochat.app.ui.theme.*
+import com.psikochat.app.ui.components.*
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
@@ -47,13 +50,25 @@ fun ProfileScreen(navController: NavController, tokenManager: TokenManager) {
     val repository = ProfileRepository(api)
     val factory = object : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return ProfileViewModel(repository) as T
+            return ProfileViewModel(repository, tokenManager) as T
         }
     }
     val viewModel: ProfileViewModel = viewModel(factory = factory)
     
+    val subscriptionRepo = com.psikochat.app.data.repository.SubscriptionRepository(api)
+    val subscriptionFactory = object : ViewModelProvider.Factory {
+        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+            return SubscriptionViewModel(subscriptionRepo) as T
+        }
+    }
+    val subscriptionViewModel: SubscriptionViewModel = viewModel(factory = subscriptionFactory)
+    val isPremiumUser by subscriptionViewModel.isPremium.collectAsState()
+    
     val profileState by viewModel.profileState.collectAsState()
     val updateState by viewModel.updateState.collectAsState()
+    val username by tokenManager.getUsername().collectAsState(initial = "Kullanıcı")
+    val fullNamePref by tokenManager.getFullName().collectAsState(initial = null)
+    val emailPref by tokenManager.getEmail().collectAsState(initial = null)
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
@@ -97,108 +112,111 @@ fun ProfileScreen(navController: NavController, tokenManager: TokenManager) {
                 },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.Default.KeyboardArrowLeft, contentDescription = "Geri", tint = LoginTextColor)
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Geri", tint = LoginTextColor)
                     }
                 },
                 actions = {
                     IconButton(onClick = { 
                         scope.launch {
                             tokenManager.clearAuthData()
+                            ProfileViewModel.clearCache()
+                            SubscriptionViewModel.clearCache()
                             navController.navigate("auth_graph") {
                                 popUpTo("main_graph") { inclusive = true }
                                 launchSingleTop = true
                             }
                         }
                     }) {
-                        Icon(Icons.Default.ExitToApp, contentDescription = "Çıkış Yap", tint = Color.Red)
+                        Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Çıkış Yap", tint = Color.Red)
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent)
             )
         },
         bottomBar = {
-            NavigationBar(
-                containerColor = Color.White,
-                tonalElevation = 8.dp,
-                modifier = Modifier.height(80.dp)
-            ) {
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Home, contentDescription = null) },
-                    label = { Text("Ana Sayfa", fontSize = 10.sp) },
-                    selected = false,
-                    onClick = { navController.navigate("home") { popUpTo("home") { inclusive = true } } }
-                )
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Share, contentDescription = null) },
-                    label = { Text("Terapi", fontSize = 10.sp) },
-                    selected = false,
-                    onClick = { }
-                )
-                
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clickable { navController.navigate("chat") },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Surface(
-                            shape = CircleShape,
-                            color = LoginButton,
-                            modifier = Modifier.size(44.dp),
-                            shadowElevation = 2.dp
-                        ) {
-                            Icon(Icons.Default.Face, contentDescription = "PsikoChat", tint = Color.White, modifier = Modifier.padding(10.dp))
-                        }
-                        Text("PsikoChat", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = LoginButton)
-                    }
-                }
-
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Person, contentDescription = null) },
-                    label = { Text("Profilim", fontSize = 10.sp) },
-                    selected = true,
-                    onClick = { }
-                )
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                    label = { Text("Ayarlar", fontSize = 10.sp) },
-                    selected = false,
-                    onClick = { navController.navigate("settings") }
-                )
-            }
+            PremiumBottomNavigation(navController = navController, currentScreen = "profile")
         },
         containerColor = LoginBackground
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            when (profileState) {
-                is Resource.Loading -> {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = LoginButton)
-                }
-                is Resource.Error -> {
-                    Column(
-                        modifier = Modifier.align(Alignment.Center).padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(Icons.Default.Warning, contentDescription = null, tint = Color.Red, modifier = Modifier.size(48.dp))
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(profileState.message ?: "Bir hata oluştu", textAlign = TextAlign.Center, color = LoginTextColor)
-                        Button(onClick = { viewModel.loadProfile() }, colors = ButtonDefaults.buttonColors(containerColor = LoginButton)) {
-                            Text("Tekrar Dene")
-                        }
+            val profile = profileState.data
+            val isOffline = profileState is Resource.Error && profile != null
+
+            if (profileState is Resource.Loading && profile == null) {
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = LoginButton)
+            } else if (profileState is Resource.Error && profile == null) {
+                Column(
+                    modifier = Modifier.align(Alignment.Center).padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(Icons.Default.Warning, contentDescription = null, tint = Color.Red, modifier = Modifier.size(48.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(profileState.message ?: "Bir hata oluştu", textAlign = TextAlign.Center, color = LoginTextColor)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(onClick = { viewModel.loadProfile() }, colors = ButtonDefaults.buttonColors(containerColor = LoginButton)) {
+                        Text("Tekrar Dene")
                     }
                 }
-                is Resource.Success -> {
-                    val profile = profileState.data!!
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 24.dp)
-                            .verticalScroll(rememberScrollState()),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
+            } else if (profile != null) {
+                // Helper to get email prefix
+                val getEmailPrefix = { emailStr: String? ->
+                    if (!emailStr.isNullOrBlank() && emailStr.contains("@")) {
+                        emailStr.substringBefore("@")
+                    } else {
+                        null
+                    }
+                }
+
+                // Dynamic Display Name Evaluation: full_name > username > email prefix > Kullanıcı
+                val displayUsername = when {
+                    !profile.fullName.isNullOrBlank() -> profile.fullName!!
+                    !fullNamePref.isNullOrBlank() -> fullNamePref!!
+                    !profile.username.isNullOrBlank() -> profile.username
+                    !username.isNullOrBlank() && username != "Kullanıcı" -> username
+                    !getEmailPrefix(profile.email).isNullOrBlank() -> getEmailPrefix(profile.email)!!
+                    !getEmailPrefix(emailPref).isNullOrBlank() -> getEmailPrefix(emailPref)!!
+                    else -> "Kullanıcı"
+                }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 24.dp)
+                        .verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    if (isOffline) {
+                        Surface(
+                            color = MildAlertBg,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MildAlertText.copy(alpha = 0.3f)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                            shadowElevation = 1.dp
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Profil bilgileri çevrimdışı görüntüleniyor.",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MildAlertText,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Yenile",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = DarkTealPrimary,
+                                    modifier = Modifier.clickable { viewModel.loadProfile() }
+                                )
+                            }
+                        }
+                    } else {
                         Spacer(modifier = Modifier.height(24.dp))
+                    }
                         
                         // Profile Header
                         Box(
@@ -211,7 +229,7 @@ fun ProfileScreen(navController: NavController, tokenManager: TokenManager) {
                         ) {
                             if (profile.profilePhotoUrl != null) {
                                 AsyncImage(
-                                    model = "${RetrofitClient.BASE_URL}${profile.profilePhotoUrl}",
+                                    model = RetrofitClient.resolveProfilePhotoUrl(profile.profilePhotoUrl),
                                     contentDescription = "Profil Fotoğrafı",
                                     modifier = Modifier
                                         .fillMaxSize()
@@ -251,11 +269,113 @@ fun ProfileScreen(navController: NavController, tokenManager: TokenManager) {
                         Spacer(modifier = Modifier.height(16.dp))
                         
                         Text(
-                            text = profile.displayName ?: profile.username,
+                            text = displayUsername,
                             style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                             color = LoginTextColor
                         )
                         
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        // Retrieve active streak dynamically from cached Room SQLite timestamps
+                        val db = com.psikochat.app.data.local.AppDatabase.getInstance(LocalContext.current)
+                        val messagesFlow = remember(profile.username) { db.chatDao().getCachedMessages(profile.username) }
+                        val messages by messagesFlow.collectAsState(initial = emptyList())
+                        val moodsFlow = remember(profile.username) { db.moodJournalDao().getCachedMoodJournals(profile.username) }
+                        val moods by moodsFlow.collectAsState(initial = emptyList())
+
+                        val streakText = remember(messages, moods) {
+                            StreakEngine.computeStreakSummary(messages, moods).label
+                        }
+
+                        // Row container holding Premium Badge and Streak Badge
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        ) {
+                            if (isPremiumUser) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = SoftMintAccent.copy(alpha = 0.3f),
+                                    border = BorderStroke(1.dp, SoftMintAccent)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Star,
+                                            contentDescription = null,
+                                            tint = DarkTealPrimary,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Premium Üye",
+                                            color = DarkTealPrimary,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                }
+                            } else {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color.LightGray.copy(alpha = 0.2f),
+                                    border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.5f))
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Lock,
+                                            contentDescription = null,
+                                            tint = Color.Gray,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Ücretsiz Plan",
+                                            color = Color.Gray,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "Yükselt",
+                                            color = DarkTealPrimary,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 12.sp,
+                                            modifier = Modifier.clickable {
+                                                navController.navigate("payment_methods")
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (streakText.startsWith("🔥")) SoftMintAccent.copy(alpha = 0.5f) else SoftMintLight,
+                                border = BorderStroke(1.dp, if (streakText.startsWith("🔥")) DarkTealPrimary.copy(alpha = 0.3f) else SoftMintAccent)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        text = streakText,
+                                        color = if (streakText.startsWith("🔥")) DarkTealPrimary else SecondaryTealText,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
                         Text(
                             text = profile.bio ?: "Henüz bir biyografi eklenmemiş.",
                             style = MaterialTheme.typography.bodyMedium,
@@ -266,12 +386,12 @@ fun ProfileScreen(navController: NavController, tokenManager: TokenManager) {
                         
                         Spacer(modifier = Modifier.height(16.dp))
                         
-                        Button(
+                        PremiumButton(
                             onClick = { showEditDialog = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = LoginButton),
-                            shape = RoundedCornerShape(12.dp)
+                            cornerRadius = 16.dp,
+                            height = 40.dp
                         ) {
-                            Icon(Icons.Default.Edit, contentDescription = null, size = 18.dp)
+                            Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Profili Düzenle")
                         }
@@ -279,23 +399,27 @@ fun ProfileScreen(navController: NavController, tokenManager: TokenManager) {
                         Spacer(modifier = Modifier.height(32.dp))
 
                         // Profile Options Section
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(24.dp),
-                            color = Color.White.copy(alpha = 0.9f)
+                        PremiumCard(
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                ProfileOptionItem(Icons.Default.Settings, "Uygulama Ayarları")
-                                Divider(color = Color.LightGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 8.dp))
-                                ProfileOptionItem(Icons.Default.DateRange, "Wellness Planım") {
-                                    navController.navigate("wellness_schedule")
-                                }
-                                Divider(color = Color.LightGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 8.dp))
-                                ProfileOptionItem(Icons.Default.Edit, "Duygu Günlüğüm") {
-                                    navController.navigate("mood_journal")
-                                }
-                                Divider(color = Color.LightGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 8.dp))
-                                ProfileOptionItem(Icons.Default.Notifications, "Bildirimler")
+                            ProfileOptionItem(Icons.Default.Settings, "Uygulama Ayarları") {
+                                navController.navigate("settings")
+                            }
+                            Divider(color = Color.LightGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 8.dp))
+                            ProfileOptionItem(Icons.Default.DateRange, "Wellness Planım") {
+                                navController.navigate("wellness_schedule")
+                            }
+                            Divider(color = Color.LightGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 8.dp))
+                            ProfileOptionItem(Icons.Default.Edit, "Duygu Günlüğüm") {
+                                navController.navigate("mood_journal")
+                            }
+                            Divider(color = Color.LightGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 8.dp))
+                            ProfileOptionItem(Icons.Default.Star, "Başarılarım") {
+                                navController.navigate("achievements")
+                            }
+                            Divider(color = Color.LightGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 8.dp))
+                            ProfileOptionItem(Icons.Default.Notifications, "Bildirimler") {
+                                navController.navigate("settings")
                             }
                         }
 
@@ -330,7 +454,6 @@ fun ProfileScreen(navController: NavController, tokenManager: TokenManager) {
                 }
             }
         }
-    }
 
     if (showEditDialog && profileState is Resource.Success) {
         val profile = (profileState as Resource.Success).data!!
@@ -403,14 +526,30 @@ fun ProfileScreen(navController: NavController, tokenManager: TokenManager) {
 
                     // Response Style Selection
                     Text("Cevap Stili", style = MaterialTheme.typography.labelMedium, color = LoginSecondaryText)
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        listOf("supportive" to "Destekleyici", "empathetic" to "Empatik", "direct" to "Net/Doğrudan").forEach { (code, label) ->
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(
+                            Triple("supportive", "Destekleyici", "Daha motive edici ve güven veren yanıtlar."),
+                            Triple("empathetic", "Empatik", "Duygularını daha çok yansıtan ve anlayan yanıtlar."),
+                            Triple("direct", "Net/Doğrudan", "Daha kısa, net ve çözüm odaklı yanıtlar.")
+                        ).forEach { (code, label, desc) ->
                             Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth().clickable { editStyle = code }.padding(vertical = 4.dp)
+                                verticalAlignment = Alignment.Top,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { editStyle = code }
+                                    .padding(vertical = 4.dp)
                             ) {
-                                RadioButton(selected = editStyle == code, onClick = { editStyle = code })
-                                Text(label, style = MaterialTheme.typography.bodyMedium)
+                                RadioButton(
+                                    selected = editStyle == code,
+                                    onClick = { editStyle = code },
+                                    modifier = Modifier.padding(top = 2.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = LoginTextColor)
+                                    Text(desc, style = MaterialTheme.typography.labelSmall, color = LoginSecondaryText, lineHeight = 14.sp)
+                                }
                             }
                         }
                     }
@@ -463,7 +602,7 @@ fun ProfileOptionItem(icon: ImageVector, title: String, onClick: () -> Unit = {}
         }
         Spacer(modifier = Modifier.width(16.dp))
         Text(text = title, fontWeight = FontWeight.Medium, color = LoginTextColor, modifier = Modifier.weight(1f))
-        Icon(Icons.Default.KeyboardArrowRight, contentDescription = null, tint = Color.Gray)
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Color.Gray)
     }
 }
 
@@ -473,15 +612,66 @@ private fun Icon(imageVector: ImageVector, contentDescription: String?, size: an
 }
 
 private fun createMultipartFromUri(context: android.content.Context, uri: android.net.Uri): MultipartBody.Part? {
-    return try {
-        val inputStream = context.contentResolver.openInputStream(uri) ?: return null
-        val tempFile = File(context.cacheDir, "temp_profile_photo.jpg")
-        val outputStream = FileOutputStream(tempFile)
-        inputStream.use { input ->
-            outputStream.use { output ->
-                input.copyTo(output)
+    val tempFile = File(context.cacheDir, "temp_profile_photo.jpg")
+    var compressionSuccess = false
+
+    try {
+        val inputStream = context.contentResolver.openInputStream(uri)
+        if (inputStream != null) {
+            val originalBitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
+            inputStream.close()
+            if (originalBitmap != null) {
+                val width = originalBitmap.width
+                val height = originalBitmap.height
+                val maxDimension = 1024
+                
+                val scaledBitmap = if (width > maxDimension || height > maxDimension) {
+                    val ratio = width.toFloat() / height.toFloat()
+                    val newWidth: Int
+                    val newHeight: Int
+                    if (width > height) {
+                        newWidth = maxDimension
+                        newHeight = (maxDimension / ratio).toInt()
+                    } else {
+                        newHeight = maxDimension
+                        newWidth = (maxDimension * ratio).toInt()
+                    }
+                    android.graphics.Bitmap.createScaledBitmap(originalBitmap, newWidth, newHeight, true)
+                } else {
+                    originalBitmap
+                }
+                
+                val outputStream = FileOutputStream(tempFile)
+                scaledBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, outputStream)
+                outputStream.flush()
+                outputStream.close()
+                
+                if (scaledBitmap != originalBitmap) {
+                    scaledBitmap.recycle()
+                }
+                originalBitmap.recycle()
+                compressionSuccess = true
             }
         }
+    } catch (e: Exception) {
+        // Fallback safely to copy
+    }
+
+    if (!compressionSuccess) {
+        try {
+            val inputStream = context.contentResolver.openInputStream(uri) ?: return null
+            val outputStream = FileOutputStream(tempFile)
+            inputStream.use { input ->
+                outputStream.use { output ->
+                    input.copyTo(output)
+                }
+            }
+        } catch (e: Exception) {
+            return null
+        }
+    }
+
+    return try {
         val requestFile = tempFile.asRequestBody("image/jpeg".toMediaTypeOrNull())
         MultipartBody.Part.createFormData("file", tempFile.name, requestFile)
     } catch (e: Exception) {

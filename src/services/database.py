@@ -2,9 +2,9 @@ import os
 import time
 import logging
 from datetime import datetime, timezone
-from typing import List, Dict
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, func, case, Boolean, event
-from sqlalchemy.orm import declarative_base, sessionmaker
+from typing import List, Dict, Optional
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, func, case, Boolean, event, ForeignKey, Numeric
+from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from src.core.config import settings
 from src.core.metrics import DATABASE_ERRORS_TOTAL
@@ -57,6 +57,8 @@ class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=True)
+    full_name = Column(String, nullable=True)
     password_hash = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     role = Column(String, default="user", nullable=True)
@@ -134,7 +136,9 @@ def init_db(retries: int = 5, delay: int = 5):
             print("Database initialized and tables created successfully.")
             migrate_user_memory_schema()  # Faz 10 P2: add new columns if missing
             migrate_users_schema()  # Faz 10 P4: add role column if missing
+            migrate_users_schema_phase2a() # Phase 2A: add email and full_name columns if missing
             migrate_recommendation_schema()  # Faz 10 P7: recommendation_events table
+            seed_plans()  # Seed default plans
             return
         except OperationalError as e:
             print(f"Warning: DB connection failed on attempt {attempt}/{retries}: {e}")
@@ -185,6 +189,65 @@ def migrate_users_schema() -> None:
                 logger.debug("MIGRATE | Column 'role' likely already exists in users: %s", col_err)
     except Exception as migrate_err:
         logger.error("MIGRATE_ERROR | Failed to migrate users schema: %s", migrate_err)
+
+def migrate_users_schema_phase2a() -> None:
+    """
+    Migration-safe ALTER TABLE for users table adding 'email' and 'full_name' columns if not present.
+    """
+    is_sqlite = DATABASE_URL.startswith("sqlite")
+    try:
+        with engine.connect() as conn:
+            # 1. Add email column
+            try:
+                if is_sqlite:
+                    conn.execute(
+                        __import__("sqlalchemy", fromlist=["text"]).text(
+                            "ALTER TABLE users ADD COLUMN email VARCHAR(255)"
+                        )
+                    )
+                else:
+                    result = conn.execute(
+                        __import__("sqlalchemy", fromlist=["text"]).text(
+                            "SELECT column_name FROM information_schema.columns "
+                            "WHERE table_name='users' AND column_name='email'"
+                        )
+                    )
+                    if result.fetchone() is None:
+                        conn.execute(
+                            __import__("sqlalchemy", fromlist=["text"]).text(
+                                "ALTER TABLE users ADD COLUMN email VARCHAR(255)"
+                            )
+                        )
+            except Exception as e:
+                pass
+
+            # 2. Add full_name column
+            try:
+                if is_sqlite:
+                    conn.execute(
+                        __import__("sqlalchemy", fromlist=["text"]).text(
+                            "ALTER TABLE users ADD COLUMN full_name VARCHAR(255)"
+                        )
+                    )
+                else:
+                    result = conn.execute(
+                        __import__("sqlalchemy", fromlist=["text"]).text(
+                            "SELECT column_name FROM information_schema.columns "
+                            "WHERE table_name='users' AND column_name='full_name'"
+                        )
+                    )
+                    if result.fetchone() is None:
+                        conn.execute(
+                            __import__("sqlalchemy", fromlist=["text"]).text(
+                                "ALTER TABLE users ADD COLUMN full_name VARCHAR(255)"
+                            )
+                        )
+            except Exception as e:
+                pass
+            conn.commit()
+            logger.info("MIGRATE | Phase 2A database user schema completed.")
+    except Exception as migrate_err:
+        logger.error("MIGRATE_ERROR | Failed to migrate users schema for phase 2a: %s", migrate_err)
 
 def migrate_user_memory_schema() -> None:
     """
@@ -263,11 +326,11 @@ def migrate_recommendation_schema() -> None:
         logger.warning("MIGRATE | recommendation_events schema migration skipped: %s", migrate_err)
 
 
-def create_user(username: str, password_hash: str) -> bool:
+def create_user(username: str, password_hash: str, email: Optional[str] = None, full_name: Optional[str] = None) -> bool:
 
     db = SessionLocal()
     try:
-        user = User(username=username, password_hash=password_hash)
+        user = User(username=username, password_hash=password_hash, email=email, full_name=full_name)
         db.add(user)
         db.commit()
         return True
@@ -287,11 +350,37 @@ def get_user_by_username(username: str):
     try:
         user = db.query(User).filter(User.username == username).first()
         if user:
-            return {"id": user.id, "username": user.username, "password_hash": user.password_hash}
+            return {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "full_name": user.full_name,
+                "password_hash": user.password_hash
+            }
         return None
     except Exception as e:
         import logging
         logging.getLogger(__name__).error(f"Error getting user: {e}")
+        raise e
+    finally:
+        db.close()
+
+def get_user_by_email(email: str):
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == email).first()
+        if user:
+            return {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "full_name": user.full_name,
+                "password_hash": user.password_hash
+            }
+        return None
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Error getting user by email: {e}")
         raise e
     finally:
         db.close()
@@ -422,6 +511,7 @@ def get_or_create_profile(username: str):
             db.commit()
             db.refresh(profile)
         
+        user = db.query(User).filter(User.username == username).first()
         return {
             "username": profile.username,
             "display_name": profile.display_name,
@@ -434,7 +524,10 @@ def get_or_create_profile(username: str):
             "privacy_mode": profile.privacy_mode,
             "answer_length_preference": profile.answer_length_preference,
             "created_at": profile.created_at.isoformat(),
-            "updated_at": profile.updated_at.isoformat()
+            "updated_at": profile.updated_at.isoformat(),
+            "id": user.id if user else None,
+            "email": user.email if user else None,
+            "full_name": user.full_name if user else None,
         }
     except Exception as e:
         db.rollback()
@@ -1305,6 +1398,107 @@ def cleanup_old_emotion_events(days: int = 30) -> int:
         return 0
     finally:
         db.close()
+
+
+# ── Subscription and Payment System Enums & Models ─────────────────────────
+
+import enum
+from sqlalchemy import Enum as SQLEnum
+
+class SubscriptionStatus(str, enum.Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+    TRIAL = "trial"
+    CANCELED = "canceled"
+    EXPIRED = "expired"
+    PAYMENT_FAILED = "payment_failed"
+    PENDING = "pending"
+
+class PaymentStatus(str, enum.Enum):
+    PENDING = "pending"
+    SUCCESS = "success"
+    FAILED = "failed"
+    REFUNDED = "refunded"
+    CANCELED = "canceled"
+
+class SubscriptionPlan(Base):
+    __tablename__ = "subscription_plans"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(32), unique=True, index=True, nullable=False)
+    price_lira = Column(Numeric(10, 2), nullable=False)
+    billing_interval = Column(String(16), default="monthly", nullable=False)
+    description = Column(String(255), nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+
+class UserSubscription(Base):
+    __tablename__ = "user_subscriptions"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String(255), ForeignKey("users.username"), index=True, nullable=False)
+    plan_id = Column(Integer, ForeignKey("subscription_plans.id"), nullable=False)
+    status = Column(SQLEnum(SubscriptionStatus), default=SubscriptionStatus.INACTIVE, nullable=False)
+    current_period_start = Column(DateTime(timezone=True), nullable=True)
+    current_period_end = Column(DateTime(timezone=True), nullable=True)
+    cancel_at_period_end = Column(Boolean, default=False, nullable=False)
+    provider_subscription_id = Column(String(255), unique=True, index=True, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    plan = relationship("SubscriptionPlan")
+
+class PaymentTransaction(Base):
+    __tablename__ = "payment_transactions"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String(255), ForeignKey("users.username"), index=True, nullable=False)
+    subscription_id = Column(Integer, ForeignKey("user_subscriptions.id"), nullable=True)
+    provider_transaction_id = Column(String(255), unique=True, index=True, nullable=True)
+    amount = Column(Numeric(10, 2), nullable=False)
+    currency = Column(String(3), default="TRY", nullable=False)
+    status = Column(SQLEnum(PaymentStatus), default=PaymentStatus.PENDING, nullable=False)
+    payment_method = Column(String(64), nullable=True)
+    idempotency_key = Column(String(255), unique=True, index=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    subscription = relationship("UserSubscription")
+
+def seed_plans():
+    """Seeds default subscription plans if they do not exist."""
+    db = SessionLocal()
+    try:
+        # Check if plans are already seeded
+        if db.query(SubscriptionPlan).count() == 0:
+            plans = [
+                SubscriptionPlan(
+                    name="free",
+                    price_lira=0.00,
+                    billing_interval="monthly",
+                    description="Sınırlı günlük yapay zeka sohbeti, temel duygu durum analizi.",
+                    is_active=True
+                ),
+                SubscriptionPlan(
+                    name="premium",
+                    price_lira=settings.PRICE_PREMIUM_TRY,
+                    billing_interval="monthly",
+                    description="Sınırsız yapay zeka sohbeti, haftalık wellness raporları, öncelikli uzman randevuları.",
+                    is_active=True
+                ),
+                SubscriptionPlan(
+                    name="professional_support",
+                    price_lira=settings.PRICE_PROFESSIONAL_TRY,
+                    billing_interval="monthly",
+                    description="Tüm premium özellikleri, ayda 2 görüntülü uzman seansı, 7/24 öncelikli destek.",
+                    is_active=True
+                )
+            ]
+            db.add_all(plans)
+            db.commit()
+            logger.info("SEED | Seeded default subscription plans.")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"SEED | Error seeding plans: {e}")
+    finally:
+        db.close()
+
 
 
 

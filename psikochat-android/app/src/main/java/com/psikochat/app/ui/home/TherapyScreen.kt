@@ -2,6 +2,7 @@ package com.psikochat.app.ui.home
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -19,9 +20,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.psikochat.app.data.local.TokenManager
 import com.psikochat.app.ui.theme.*
+import com.psikochat.app.ui.components.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -41,6 +46,22 @@ fun TherapyScreen(navController: NavController, tokenManager: TokenManager) {
             Psychologist("Uzm. Psk. Ayşe Demir", "Çocuk ve Ergen Psikolojisi")
         )
     }
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val db = com.psikochat.app.data.local.AppDatabase.getInstance(context)
+    val appointmentRepository = com.psikochat.app.data.repository.AppointmentRepository(db.appointmentDao())
+    val factory = object : ViewModelProvider.Factory {
+        @Suppress("UNCHECKED_CAST")
+        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+            return AppointmentViewModel(appointmentRepository) as T
+        }
+    }
+    val viewModel: AppointmentViewModel = viewModel(factory = factory)
+
+    var activePsychologist by remember { mutableStateOf<Psychologist?>(null) }
+    var selectedDate by remember { mutableStateOf("Bugün") }
+    var selectedTime by remember { mutableStateOf("14:00") }
+    var showSuccessDialog by remember { mutableStateOf<com.psikochat.app.data.local.entity.CachedAppointment?>(null) }
 
     var showSuccessMessage by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -72,57 +93,7 @@ fun TherapyScreen(navController: NavController, tokenManager: TokenManager) {
             )
         },
         bottomBar = {
-            NavigationBar(
-                containerColor = Color.White,
-                tonalElevation = 8.dp,
-                modifier = Modifier.height(80.dp)
-            ) {
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Home, contentDescription = null) },
-                    label = { Text("Ana Sayfa", fontSize = 10.sp) },
-                    selected = false,
-                    onClick = { navController.navigate("home") { popUpTo("home") { inclusive = true } } }
-                )
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Share, contentDescription = null) },
-                    label = { Text("Terapi", fontSize = 10.sp) },
-                    selected = true,
-                    onClick = { }
-                )
-                
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clickable { navController.navigate("chat") },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Surface(
-                            shape = CircleShape,
-                            color = LoginButton,
-                            modifier = Modifier.size(44.dp),
-                            shadowElevation = 2.dp
-                        ) {
-                            Icon(Icons.Default.Face, contentDescription = "PsikoChat", tint = Color.White, modifier = Modifier.padding(10.dp))
-                        }
-                        Text("PsikoChat", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = LoginButton)
-                    }
-                }
-
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Person, contentDescription = null) },
-                    label = { Text("Gelişim", fontSize = 10.sp) },
-                    selected = false,
-                    onClick = { navController.navigate("profile") }
-                )
-                NavigationBarItem(
-                    icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                    label = { Text("Ayarlar", fontSize = 10.sp) },
-                    selected = false,
-                    onClick = { navController.navigate("settings") }
-                )
-            }
+            PremiumBottomNavigation(navController = navController, currentScreen = "therapy")
         },
         containerColor = LoginBackground
     ) { padding ->
@@ -134,23 +105,23 @@ fun TherapyScreen(navController: NavController, tokenManager: TokenManager) {
         ) {
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Red Alert Box
-            Surface(
+            // Premium supportive alert box
+            PremiumCard(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                color = Color(0xFFFEE2E2) // Light red
+                backgroundColor = MildAlertBg,
+                border = androidx.compose.foundation.BorderStroke(1.dp, MildAlertText.copy(alpha = 0.3f)),
+                elevation = 0.dp
             ) {
                 Row(
-                    modifier = Modifier.padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Warning, contentDescription = null, tint = Color.Red)
+                    Icon(Icons.Default.Warning, contentDescription = null, tint = MildAlertText)
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
-                        text = "Riskli destek için bir uzman yönlendiriliyorsunuz.",
-                        color = Color.Red,
+                        text = "Destek alabileceğiniz profesyonel bir uzmana yönlendiriliyorsunuz.",
+                        color = MildAlertText,
                         fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
@@ -171,32 +142,213 @@ fun TherapyScreen(navController: NavController, tokenManager: TokenManager) {
             ) {
                 items(psychologists, key = { it.name }) { psychologist ->
                     PsychologistCard(psychologist) {
-                        scope.launch {
-                            snackbarHostState.showSnackbar(
-                                message = "Randevunuz Başarıyla oluşturulmuştur.",
-                                duration = SnackbarDuration.Short
-                            )
-                        }
+                        activePsychologist = psychologist
+                        selectedDate = "Bugün"
+                        selectedTime = "14:00"
                     }
                 }
             }
         }
     }
+
+    if (activePsychologist != null) {
+        val psychologist = activePsychologist!!
+        AlertDialog(
+            onDismissRequest = { activePsychologist = null },
+            title = {
+                Text(
+                    "Randevu Planla",
+                    fontWeight = FontWeight.Bold,
+                    color = LoginTextColor
+                )
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "${psychologist.name} ile görüşme zamanı seçin.",
+                        fontSize = 14.sp,
+                        color = LoginSecondaryText
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text("Tarih Seçin", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = DarkTealPrimary)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        listOf("Bugün", "Yarın", "Sonraki Gün").forEach { dateOption ->
+                            val isSelected = selectedDate == dateOption
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isSelected) SoftMintAccent else Color.White,
+                                border = BorderStroke(1.dp, if (isSelected) DarkTealPrimary else Color.LightGray),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { selectedDate = dateOption }
+                                    .padding(vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = dateOption,
+                                    color = if (isSelected) DarkTealPrimary else LoginTextColor,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(vertical = 8.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text("Saat Seçin", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = DarkTealPrimary)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val row1 = listOf("09:00", "10:00", "11:00", "14:00")
+                        val row2 = listOf("15:00", "16:00", "17:00")
+                        
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            row1.forEach { timeOption ->
+                                val isSelected = selectedTime == timeOption
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSelected) SoftMintAccent else Color.White,
+                                    border = BorderStroke(1.dp, if (isSelected) DarkTealPrimary else Color.LightGray),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { selectedTime = timeOption }
+                                ) {
+                                    Text(
+                                        text = timeOption,
+                                        color = if (isSelected) DarkTealPrimary else LoginTextColor,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.padding(vertical = 8.dp)
+                                    )
+                                }
+                            }
+                        }
+                        
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            row2.forEach { timeOption ->
+                                val isSelected = selectedTime == timeOption
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSelected) SoftMintAccent else Color.White,
+                                    border = BorderStroke(1.dp, if (isSelected) DarkTealPrimary else Color.LightGray),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { selectedTime = timeOption }
+                                ) {
+                                    Text(
+                                        text = timeOption,
+                                        color = if (isSelected) DarkTealPrimary else LoginTextColor,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.padding(vertical = 8.dp)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        // TODO: Replace local appointment storage with backend appointment API when available.
+                        viewModel.bookAppointment(
+                            psychologistName = psychologist.name,
+                            specialty = psychologist.specialty,
+                            date = selectedDate,
+                            time = selectedTime
+                        )
+                        showSuccessDialog = com.psikochat.app.data.local.entity.CachedAppointment(
+                            psychologistName = psychologist.name,
+                            psychologistSpecialty = psychologist.specialty,
+                            appointmentDate = selectedDate,
+                            appointmentTime = selectedTime,
+                            createdAt = ""
+                        )
+                        activePsychologist = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = DarkTealPrimary)
+                ) {
+                    Text("Randevuyu Onayla", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { activePsychologist = null }) {
+                    Text("İptal", color = LoginSecondaryText)
+                }
+            }
+        )
+    }
+
+    if (showSuccessDialog != null) {
+        val appt = showSuccessDialog!!
+        AlertDialog(
+            onDismissRequest = { showSuccessDialog = null },
+            title = {
+                Text(
+                    "Randevunuz Planlandı! 🎉",
+                    fontWeight = FontWeight.Bold,
+                    color = LoginTextColor
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "${appt.psychologistName} ile randevunuz başarıyla oluşturulmuştur.",
+                        fontSize = 14.sp,
+                        color = LoginTextColor
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Surface(
+                        color = SoftMintAccent.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text("Uzman: ${appt.psychologistName}", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = DarkTealPrimary)
+                            Text("Tarih: ${appt.appointmentDate}", fontSize = 12.sp, color = LoginTextColor)
+                            Text("Saat: ${appt.appointmentTime}", fontSize = 12.sp, color = LoginTextColor)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { showSuccessDialog = null },
+                    colors = ButtonDefaults.buttonColors(containerColor = DarkTealPrimary)
+                ) {
+                    Text("Harika", color = Color.White)
+                }
+            }
+        )
+    }
 }
 
 @Composable
 fun PsychologistCard(psychologist: Psychologist, onAppointmentCreated: () -> Unit) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        color = Color.White.copy(alpha = 0.9f),
-        shadowElevation = 2.dp
+    PremiumCard(
+        modifier = Modifier.fillMaxWidth()
     ) {
-        Box(modifier = Modifier.padding(16.dp)) {
+        Box(modifier = Modifier.fillMaxWidth()) {
             Icon(
                 Icons.Default.Info,
                 contentDescription = null,
-                tint = LoginButton,
+                tint = DarkTealAccent,
                 modifier = Modifier.align(Alignment.TopEnd).size(20.dp)
             )
             
@@ -205,10 +357,10 @@ fun PsychologistCard(psychologist: Psychologist, onAppointmentCreated: () -> Uni
                     modifier = Modifier
                         .size(64.dp)
                         .clip(CircleShape)
-                        .background(Color.LightGray),
+                        .background(SoftMintAccent),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(40.dp), tint = Color.White)
+                    Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(40.dp), tint = DarkTealPrimary)
                 }
                 
                 Spacer(modifier = Modifier.width(16.dp))
@@ -226,11 +378,10 @@ fun PsychologistCard(psychologist: Psychologist, onAppointmentCreated: () -> Uni
                         color = LoginSecondaryText
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    Button(
+                    PremiumButton(
                         onClick = onAppointmentCreated,
-                        colors = ButtonDefaults.buttonColors(containerColor = LoginButton),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.height(36.dp),
+                        cornerRadius = 12.dp,
+                        height = 36.dp,
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp)
                     ) {
                         Text("Randevu Oluştur", fontSize = 12.sp, color = Color.White)

@@ -15,8 +15,22 @@ interface ChatDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCachedMessages(msgs: List<CachedChatMessage>)
 
+    @Update
+    suspend fun updateCachedMessage(message: CachedChatMessage)
+
+    @Query("UPDATE cached_chat_messages SET state = :state WHERE localId = :localId")
+    suspend fun updateCachedMessageStateByLocalId(localId: String, state: String)
+
     @Query("DELETE FROM cached_chat_messages WHERE userId = :userId")
     suspend fun clearCachedMessages(userId: String)
+
+    /**
+     * Deletes only rows with state != 'pending'.
+     * Used by refreshHistory to preserve offline-queued user messages
+     * while replacing server-synced rows with fresh data.
+     */
+    @Query("DELETE FROM cached_chat_messages WHERE userId = :userId AND state != 'pending'")
+    suspend fun clearNonPendingMessages(userId: String)
 
     @Query("SELECT * FROM pending_chat_messages WHERE userId = :userId ORDER BY timestamp ASC")
     suspend fun getPendingMessages(userId: String): List<PendingChatMessage>

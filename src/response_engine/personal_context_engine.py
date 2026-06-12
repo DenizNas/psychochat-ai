@@ -43,6 +43,7 @@ import unicodedata
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
+from src.ai.preprocessing import turkish_lower
 from src.services.database import (
     create_memory,
     get_active_memories_for_user,
@@ -51,6 +52,8 @@ from src.services.database import (
     update_memory_decay,
     cleanup_old_memories,
 )
+from src.response_engine.memory_extractor import extract_and_update_profile
+from src.response_engine.memory_profile import build_summary_for_prompt, get_advice_prevention_instructions
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +127,7 @@ _PRIVACY_BLOCK_PATTERNS = [
     r"kimlik\s*no",
     r"pasaport\s*no",
     r"adres[im]?[\s:]+\w",
-    r"sokak|mahalle|ilçe|posta\s*kodu",
+    r"sokak|mahalle|ilçe|semt|posta\s*kodu|bulvar|apartman|daire",
     r"e.?posta\s*adresi",
     # Self-harm / crisis (must never enter memory)
     r"kendim[ie]\s*zarar",
@@ -136,17 +139,16 @@ _PRIVACY_BLOCK_PATTERNS = [
     r"hap\s*iç",
     r"zehir\s*iç",
     r"kendime\s*zarar",
-    # Medical diagnoses (exact clinical terms stored verbatim is sensitive)
-    r"tanı\s*aldım",
-    r"bipolar\s*(bozukluk|tanısı)",
-    r"şizofreni",
-    r"major\s*depresyon\s*tanısı",
-    r"borderline\s*kişilik",
     # Secrets / credentials (prompt injection vector)
     r"api\s*key",
     r"secret\s*key",
     r"password|şifre\s*şu",
-    r"token\s*değerim",
+    r"token\s*değerim|iban|kredi\s*kartı|kart\s*no|cvv",
+    # Sensitive identity / Political / Religious / Sexual / Medical health details
+    r"\b(siyasi|parti|oy\s*ver|akp|chp|mhp|dem\s*parti|politika|erdoğan|imamoğlu)\b",
+    r"\b(müslüman|hristiyan|yahudi|musevi|ateist|deist|mezhep|inanç|dini|ibadet|namaz|kilise|cami)\b",
+    r"\b(cinsel|yönelim|lgbt|lezbiyen|biseksüel|hetero|homoseksüel|transseksüel)\b",
+    r"\b(hiv|aids|kanser|tedavi|ilaç|antidepresan|psikiyatri|tanı|tanısı|teşhis|klinik|hastalık|bipolar|bozukluk|şizofreni|anksiyete|depresyon)\b",
 ]
 
 _PRIVACY_RE = re.compile(
@@ -172,20 +174,21 @@ def _nfc(text: str) -> str:
 
 def _is_privacy_safe(text: str) -> bool:
     """Returns True if text is safe to store in memory (no PII or harmful content)."""
-    return not bool(_PRIVACY_RE.search(text))
+    return not bool(_PRIVACY_RE.search(turkish_lower(text)))
 
 
 def _classify_sensitivity(content: str) -> str:
     """Classifies a memory content's sensitivity level."""
-    if _HIGH_SENSITIVITY_KEYWORDS.search(content):
+    lowercased = turkish_lower(content)
+    if _HIGH_SENSITIVITY_KEYWORDS.search(lowercased):
         return SENSITIVITY_HIGH
-    if _MEDIUM_SENSITIVITY_KEYWORDS.search(content):
+    if _MEDIUM_SENSITIVITY_KEYWORDS.search(lowercased):
         return SENSITIVITY_MEDIUM
     return SENSITIVITY_LOW
 
 
 def _is_crisis(risk: str) -> bool:
-    return risk.strip().lower() in {"1", "crisis", "kriz"}
+    return turkish_lower(risk.strip()) in {"1", "crisis", "kriz"}
 
 
 def _sanitize(content: str) -> str:
@@ -306,8 +309,8 @@ def _compute_decay(last_reinforced_at: Optional[str], created_at: Optional[str])
 
 def _text_similarity(a: str, b: str) -> float:
     """Simple token-overlap based similarity (no external libs)."""
-    tokens_a = set(_nfc(a).lower().split())
-    tokens_b = set(_nfc(b).lower().split())
+    tokens_a = set(turkish_lower(_nfc(a)).split())
+    tokens_b = set(turkish_lower(_nfc(b)).split())
     if not tokens_a or not tokens_b:
         return 0.0
     intersection = tokens_a & tokens_b
@@ -353,11 +356,13 @@ def _detect_contradiction(
         if mem.get("memory_type") != candidate_type and mem.get("memory_key") != candidate_type:
             continue
         existing_content = mem.get("memory_value", "")
+        new_lower = turkish_lower(candidate_content)
+        old_lower = turkish_lower(existing_content)
         for pat_a, pat_b in negation_pairs:
-            new_has_a = bool(re.search(pat_a, candidate_content, re.I))
-            new_has_b = bool(re.search(pat_b, candidate_content, re.I))
-            old_has_a = bool(re.search(pat_a, existing_content, re.I))
-            old_has_b = bool(re.search(pat_b, existing_content, re.I))
+            new_has_a = bool(re.search(pat_a, new_lower))
+            new_has_b = bool(re.search(pat_b, new_lower))
+            old_has_a = bool(re.search(pat_a, old_lower))
+            old_has_b = bool(re.search(pat_b, old_lower))
             if (new_has_a and old_has_b) or (new_has_b and old_has_a):
                 return mem
     return None
@@ -394,11 +399,11 @@ def _score_memory(
 
     # 3. Relevance score (keyword + emotion + type match)
     relevance = 0.0
-    if current_emotion and current_emotion.lower() in content.lower():
+    if current_emotion and turkish_lower(current_emotion) in turkish_lower(content):
         relevance += 0.4
     if current_text:
-        words = [w for w in _nfc(current_text).lower().split() if len(w) > 3]
-        matched = sum(1 for w in words if w in content.lower())
+        words = [w for w in turkish_lower(_nfc(current_text)).split() if len(w) > 3]
+        matched = sum(1 for w in words if w in turkish_lower(content))
         if words:
             relevance += 0.6 * min(1.0, matched / max(1, len(words)))
     relevance = min(1.0, relevance)
@@ -468,8 +473,9 @@ class PersonalContextEngine:
             logger.info("PCE_EXTRACT | user=%s | SKIPPED | reason=raw_text_not_privacy_safe", user_id)
             return self._meta(len(existing), 0, 1, 0, "raw_text_not_privacy_safe")
 
+        normalized_lower = turkish_lower(normalized)
         for mem_type, sensitivity, pattern, template, base_conf in _EXTRACTION_RULES:
-            match = re.search(pattern, normalized, flags=re.IGNORECASE | re.UNICODE)
+            match = re.search(pattern, normalized_lower, flags=re.UNICODE)
             if not match:
                 continue
 
@@ -541,7 +547,7 @@ class PersonalContextEngine:
                 extracted_count += 1
 
         # Wellness pattern from emotion
-        if emotion and emotion.lower() not in {"neutral", "normal", "nötr", ""}:
+        if emotion and turkish_lower(emotion) not in {"neutral", "normal", "nötr", ""}:
             emotion_content = f"Kullanıcı '{emotion}' duygusunu tekrar bildirdi."
             if _is_privacy_safe(emotion_content) and _classify_sensitivity(emotion_content) != SENSITIVITY_HIGH:
                 ok = create_memory(
@@ -559,6 +565,12 @@ class PersonalContextEngine:
 
         cleanup_old_memories(user_id, max_limit=MAX_MEMORIES_PER_USER)
         total = len(get_active_memories_for_user(user_id))
+
+        # [NEW] Extract and update the long-term memory profile
+        try:
+            extract_and_update_profile(user_id, text, emotion, risk)
+        except Exception as profile_err:
+            logger.error(f"PCE_EXTRACT | Error updating profile: {profile_err}")
 
         logger.info(
             "PCE_EXTRACT | user=%s | extracted=%d | filtered_privacy=%d | total=%d",
@@ -618,34 +630,63 @@ class PersonalContextEngine:
 
     # ── Injection Builder ────────────────────────────────────────────────
 
-    def build_injection(self, memories: List[Dict]) -> str:
+    def build_injection(self, memories: List[Dict], user_id: Optional[str] = None) -> str:
         """Builds a concise memory context block for the prompt.
 
         Strictly enforces MAX_INJECTION_TOTAL_CHARS (600).
-        Returns empty string if nothing selected.
         """
-        if not memories:
-            return ""
+        lines = []
+        total_chars = 0
 
-        header = "[KULLANICI HAFIZASI — Kişisel Bağlam]:"
-        lines   = [header]
-        total   = len(header)
+        # 1. Build profile summary if user_id is provided
+        summary = ""
+        if user_id:
+            try:
+                summary = build_summary_for_prompt(user_id)
+            except Exception as e:
+                logger.error(f"PCE | Error building summary for prompt: {e}")
+        
+        if summary:
+            lines.append(summary)
+            total_chars += len(summary) + 1
 
+        # 2. Build advice prevention guidelines if user_id is provided
+        advice_instr = ""
+        if user_id:
+            try:
+                advice_instr = get_advice_prevention_instructions(user_id)
+            except Exception as e:
+                logger.error(f"PCE | Error building advice instructions: {e}")
+
+        if advice_instr:
+            # Check if it fits under 600 chars budget
+            if total_chars + len(advice_instr) + 1 <= MAX_INJECTION_TOTAL_CHARS:
+                lines.append(advice_instr)
+                total_chars += len(advice_instr) + 1
+
+        # 3. Add active memories
+        active_lines = []
+        active_header = "[KULLANICI HAFIZASI — Kişisel Bağlam]:"
+        active_chars = len(active_header)
+        
         for mem in memories:
-            mem_type = mem.get("memory_type") or mem.get("memory_key", "")
             content  = mem.get("memory_value", "")
-            line     = f"• [{mem_type}] {content}"
-            if total + len(line) + 1 > MAX_INJECTION_TOTAL_CHARS:
+            line     = f"• {content}"
+            if active_chars + len(line) + 1 > 300: # allocate up to 300 chars for active memories
                 break
-            lines.append(line)
-            total += len(line) + 1
+            active_lines.append(line)
+            active_chars += len(line) + 1
 
-        if len(lines) == 1:
+        if active_lines:
+            active_block = active_header + "\n" + "\n".join(active_lines)
+            if total_chars + len(active_block) + 1 <= MAX_INJECTION_TOTAL_CHARS:
+                lines.append(active_block)
+                total_chars += len(active_block) + 1
+
+        if not lines:
             return ""
 
-        return "\n".join(lines)
-
-    # ── Main Entry Point ──────────────────────────────────────────────────
+        return "\n\n".join(lines)
 
     def process_turn(
         self,
@@ -665,6 +706,19 @@ class PersonalContextEngine:
         Maintains the same return shape as legacy process_memory() for
         backward compatibility with engine.py.
         """
+        # [NEW] Crisis and privacy early-return (no extraction, lookup, or injection)
+        if privacy_mode or _is_crisis(risk):
+            logger.info("PCE_PROCESS | user=%s | BYPASSED | crisis_or_privacy_active", user_id)
+            return {
+                "injection_text":          "",
+                "memory_count":            0,
+                "selected_memory_count":   0,
+                "memory_injected":         False,
+                "memory_candidates":       0,
+                "memory_filtered_privacy": 0,
+                "memory_filtered_crisis":  0,
+            }
+
         # Step 1: Extract
         extract_meta = self.extract(user_id, text, emotion, risk, privacy_mode)
 
@@ -674,7 +728,7 @@ class PersonalContextEngine:
         )
 
         # Step 3: Build injection
-        injection_text = self.build_injection(selected)
+        injection_text = self.build_injection(selected, user_id=user_id)
         memory_injected = bool(injection_text)
 
         # Step 4: Structured log (privacy-safe — no raw text)

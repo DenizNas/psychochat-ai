@@ -19,6 +19,7 @@ import logging
 import unicodedata
 from typing import List, Dict, Any, Optional, Tuple
 
+from src.ai.preprocessing import turkish_lower
 from src.services.database import get_chat_history
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 # Constants & Config
 # ---------------------------------------------------------------------------
 
-MAX_HISTORY_MESSAGES: int = 12       # ceiling for DB fetch
+MAX_HISTORY_MESSAGES: int = 24       # ceiling for DB fetch
 MAX_CONTEXT_CHARS: int = 4_000       # total char budget for all history
 MAX_SINGLE_MSG_CHARS: int = 800      # hard cap per individual message
 CRISIS_RISK_LABELS = {"1", "crisis", "kriz"}
@@ -54,7 +55,7 @@ def _truncate(text: str, max_chars: int) -> str:
 
 def _emotion_group(emotion: str) -> Optional[str]:
     """Return canonical emotion group key, or None if unknown."""
-    lower = emotion.lower()
+    lower = turkish_lower(emotion)
     for group, labels in EMOTION_GROUPS.items():
         if lower in labels:
             return group
@@ -62,7 +63,7 @@ def _emotion_group(emotion: str) -> Optional[str]:
 
 
 def _is_crisis(risk: str) -> bool:
-    return risk.strip().lower() in CRISIS_RISK_LABELS
+    return turkish_lower(risk.strip()) in CRISIS_RISK_LABELS
 
 
 def _deduplicate(messages: List[Dict]) -> List[Dict]:
@@ -107,7 +108,7 @@ def _score_message(
     recency = index / max(total - 1, 1)         # 0.0 → 1.0
 
     # Crisis bonus
-    content_lower = msg.get("content", "").lower()
+    content_lower = turkish_lower(msg.get("content", ""))
     crisis_keywords = (
         "kriz", "intihar", "zarar", "öldür", "yardım", "112",
         "crisis", "suicide", "harm", "emergency"

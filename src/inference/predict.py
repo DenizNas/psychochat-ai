@@ -66,9 +66,12 @@ class EmotionCrisisPredictor:
             
         idx_str = str(predicted_idx.item())
         label_str = self.emotion_labels.get(idx_str, idx_str)
+        confidence_val = confidence.item()
+        if confidence_val < 0.55:
+            label_str = "neutral"
         return {
              "label": label_str,
-             "confidence": confidence.item()
+             "confidence": confidence_val
         }
         
     def predict_crisis(self, text):

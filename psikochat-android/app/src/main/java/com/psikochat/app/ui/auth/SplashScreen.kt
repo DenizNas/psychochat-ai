@@ -19,7 +19,12 @@ fun SplashScreen(navController: NavController, tokenManager: TokenManager) {
     LaunchedEffect(Unit) {
         val token = tokenManager.getToken().first()
         if (!token.isNullOrEmpty()) {
-            navController.navigate("main_graph") { popUpTo("splash") { inclusive = true } }
+            val completed = tokenManager.isOnboardingCompleted().first()
+            if (!completed) {
+                navController.navigate("onboarding_wizard") { popUpTo("splash") { inclusive = true } }
+            } else {
+                navController.navigate("main_graph") { popUpTo("splash") { inclusive = true } }
+            }
         } else {
             navController.navigate("auth_graph") { popUpTo("splash") { inclusive = true } }
         }

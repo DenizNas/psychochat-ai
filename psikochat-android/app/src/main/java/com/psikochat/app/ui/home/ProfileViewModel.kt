@@ -2,6 +2,7 @@ package com.psikochat.app.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.psikochat.app.data.local.TokenManager
 import com.psikochat.app.data.model.ProfileResponse
 import com.psikochat.app.data.model.Resource
 import com.psikochat.app.data.model.UpdateProfileRequest
@@ -10,9 +11,22 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
-class ProfileViewModel(private val repository: ProfileRepository) : ViewModel() {
+class ProfileViewModel(
+    private val repository: ProfileRepository,
+    private val tokenManager: TokenManager
+) : ViewModel() {
 
-    private val _profileState = MutableStateFlow<Resource<ProfileResponse>>(Resource.Loading())
+    companion object {
+        private var cachedProfile: ProfileResponse? = null
+
+        fun clearCache() {
+            cachedProfile = null
+        }
+    }
+
+    private val _profileState = MutableStateFlow<Resource<ProfileResponse>>(
+        cachedProfile?.let { Resource.Success(it) } ?: Resource.Loading()
+    )
     val profileState: StateFlow<Resource<ProfileResponse>> = _profileState
 
     private val _updateState = MutableStateFlow<Resource<ProfileResponse>?>(null)
@@ -24,8 +38,22 @@ class ProfileViewModel(private val repository: ProfileRepository) : ViewModel() 
 
     fun loadProfile() {
         viewModelScope.launch {
-            _profileState.value = Resource.Loading()
-            _profileState.value = repository.getProfile()
+            _profileState.value = Resource.Loading(cachedProfile)
+            val result = repository.getProfile()
+            if (result is Resource.Success) {
+                cachedProfile = result.data
+                _profileState.value = result
+                result.data?.themePreference?.let {
+                    tokenManager.saveThemePreference(it)
+                }
+            } else {
+                val cached = cachedProfile
+                if (cached != null) {
+                    _profileState.value = Resource.Error(result.message ?: "Profil bilgileri alınamadı", cached)
+                } else {
+                    _profileState.value = result
+                }
+            }
         }
     }
 
@@ -54,7 +82,11 @@ class ProfileViewModel(private val repository: ProfileRepository) : ViewModel() 
             val result = repository.updateProfile(request)
             _updateState.value = result
             if (result is Resource.Success) {
+                cachedProfile = result.data
                 _profileState.value = result
+                result.data?.themePreference?.let {
+                    tokenManager.saveThemePreference(it)
+                }
             }
         }
     }
@@ -65,6 +97,7 @@ class ProfileViewModel(private val repository: ProfileRepository) : ViewModel() 
             val result = repository.uploadProfilePhoto(filePart)
             _updateState.value = result
             if (result is Resource.Success) {
+                cachedProfile = result.data
                 _profileState.value = result
             }
         }

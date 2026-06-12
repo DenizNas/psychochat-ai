@@ -1,4 +1,6 @@
 package com.psikochat.app.ui.auth
+
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.psikochat.app.data.local.TokenManager
@@ -12,38 +14,54 @@ class AuthViewModel(private val repository: AuthRepository, private val tokenMan
     private val _authState = MutableStateFlow<Resource<Boolean>>(Resource.Success(false))
     val authState: StateFlow<Resource<Boolean>> = _authState
     
-    fun login(user: String, pass: String) {
-        if (user.isBlank() || pass.isBlank()) {
-            _authState.value = Resource.Error("Kullanıcı adı ve şifre boş bırakılamaz")
+    companion object {
+        private const val TAG = "AuthViewModel"
+    }
+    
+    fun login(email: String, pass: String) {
+        if (email.isBlank() || pass.isBlank()) {
+            _authState.value = Resource.Error("E-posta ve şifre boş bırakılamaz")
             return
         }
         
         viewModelScope.launch {
             _authState.value = Resource.Loading()
-            when (val res = repository.login(user, pass)) {
+            Log.d(TAG, "LOGIN | Başlatıldı, e-posta: $email")
+            when (val res = repository.login(email, pass)) {
                 is Resource.Success -> {
                     res.data?.let { 
-                        tokenManager.saveAuthData(it.access_token, it.username) 
+                        tokenManager.saveAuthData(it.access_token, it.username, it.email, it.fullName)
+                        Log.d(TAG, "LOGIN | Başarılı, token DataStore'a kaydedildi. Kullanıcı: ${it.username}")
                     }
                     _authState.value = Resource.Success(true)
                 }
-                is Resource.Error -> _authState.value = Resource.Error(res.message ?: "Hata")
+                is Resource.Error -> {
+                    Log.w(TAG, "LOGIN | Başarısız: ${res.message}")
+                    _authState.value = Resource.Error(res.message ?: "Hata")
+                }
                 else -> {}
             }
         }
     }
     
-    fun register(user: String, pass: String) {
-        if (user.isBlank() || pass.isBlank()) {
-            _authState.value = Resource.Error("Kullanıcı adı ve şifre boş bırakılamaz")
+    fun register(fullName: String, email: String, pass: String) {
+        if (fullName.isBlank() || email.isBlank() || pass.isBlank()) {
+            _authState.value = Resource.Error("Ad soyad, e-posta ve şifre boş bırakılamaz")
             return
         }
         
         viewModelScope.launch {
             _authState.value = Resource.Loading()
-            when (val res = repository.register(user, pass)) {
-                is Resource.Success -> _authState.value = Resource.Success(true)
-                is Resource.Error -> _authState.value = Resource.Error(res.message ?: "Hata")
+            Log.d(TAG, "REGISTER | Kayıt işlemi başlatıldı. E-posta: $email")
+            when (val res = repository.register(fullName, email, pass)) {
+                is Resource.Success -> {
+                    Log.d(TAG, "REGISTER | Kayıt başarılı, otomatik giriş yapılmıyor.")
+                    _authState.value = Resource.Success(true)
+                }
+                is Resource.Error -> {
+                    Log.w(TAG, "REGISTER | Kayıt başarısız: ${res.message}")
+                    _authState.value = Resource.Error(res.message ?: "Kayıt başarısız")
+                }
                 else -> {}
             }
         }
@@ -55,6 +73,7 @@ class AuthViewModel(private val repository: AuthRepository, private val tokenMan
 
     fun logout() {
         viewModelScope.launch {
+            Log.d(TAG, "LOGOUT | Kullanıcı çıkış yapıyor, token temizleniyor.")
             tokenManager.clearAuthData()
             resetState()
         }

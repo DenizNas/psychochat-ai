@@ -12,7 +12,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
@@ -36,6 +36,7 @@ import com.psikochat.app.data.local.TokenManager
 import com.psikochat.app.data.model.ReflectionResponse
 import com.psikochat.app.data.repository.ReflectionRepository
 import com.psikochat.app.ui.theme.*
+import com.psikochat.app.ui.components.PremiumLockedCard
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,7 +65,7 @@ fun ReflectionScreen(navController: NavController, tokenManager: TokenManager) {
                         text = "Kişisel Refleksiyon",
                         fontWeight = FontWeight.Bold,
                         fontSize = 20.sp,
-                        color = Color.White
+                        color = LoginTextColor
                     )
                 },
                 navigationIcon = {
@@ -72,7 +73,7 @@ fun ReflectionScreen(navController: NavController, tokenManager: TokenManager) {
                         Icon(
                             imageVector = Icons.Default.ArrowBack,
                             contentDescription = "Geri",
-                            tint = Color.White
+                            tint = LoginTextColor
                         )
                     }
                 },
@@ -83,14 +84,19 @@ fun ReflectionScreen(navController: NavController, tokenManager: TokenManager) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
                             contentDescription = "Yenile",
-                            tint = Color.White
+                            tint = LoginTextColor
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkSurface)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = LoginBackground,
+                    titleContentColor = LoginTextColor,
+                    navigationIconContentColor = LoginTextColor,
+                    actionIconContentColor = LoginTextColor
+                )
             )
         },
-        containerColor = DarkBackground
+        containerColor = LoginBackground
     ) { padding ->
         Column(
             modifier = Modifier
@@ -102,7 +108,7 @@ fun ReflectionScreen(navController: NavController, tokenManager: TokenManager) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp)
-                    .background(DarkSurface, RoundedCornerShape(12.dp))
+                    .background(PremiumWhiteCard, RoundedCornerShape(12.dp))
                     .padding(4.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
@@ -112,7 +118,7 @@ fun ReflectionScreen(navController: NavController, tokenManager: TokenManager) {
                         modifier = Modifier
                             .weight(1f)
                             .background(
-                                color = if (isSelected) AccentPrimary else Color.Transparent,
+                                color = if (isSelected) DarkTealPrimary else Color.Transparent,
                                 shape = RoundedCornerShape(8.dp)
                             )
                             .clickable { selectedPeriod = periodKey }
@@ -121,7 +127,7 @@ fun ReflectionScreen(navController: NavController, tokenManager: TokenManager) {
                     ) {
                         Text(
                             text = label,
-                            color = if (isSelected) Color.White else Color.Gray,
+                            color = if (isSelected) DarkTealPrimary else LoginSecondaryText,
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp
                         )
@@ -142,7 +148,7 @@ fun ReflectionScreen(navController: NavController, tokenManager: TokenManager) {
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
                         ) {
-                            CircularProgressIndicator(color = AccentPrimary)
+                            CircularProgressIndicator(color = DarkTealPrimary)
                         }
                     }
                     is ReflectionUiState.Success -> {
@@ -152,12 +158,26 @@ fun ReflectionScreen(navController: NavController, tokenManager: TokenManager) {
                         EmptyReflectionView()
                     }
                     is ReflectionUiState.Error -> {
-                        ErrorReflectionView(
-                            message = state.message,
-                            onRetry = {
-                                viewModel.loadReflection(selectedPeriod)
+                        if (state.isPremiumRequired) {
+                            Box(
+                                modifier = Modifier.fillMaxSize().padding(16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                PremiumLockedCard(
+                                    title = "Premium Analiz",
+                                    description = "Gelişmiş iyi oluş analizleri ve kişisel raporlar Premium üyelikle açılır.",
+                                    ctaText = "Premium'a Geç",
+                                    onUpgradeClick = { navController.navigate("payment_methods") }
+                                )
                             }
-                        )
+                        } else {
+                            ErrorReflectionView(
+                                message = state.message,
+                                onRetry = {
+                                    viewModel.loadReflection(selectedPeriod)
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -168,9 +188,9 @@ fun ReflectionScreen(navController: NavController, tokenManager: TokenManager) {
 @Composable
 fun ReflectionContent(reflection: ReflectionResponse) {
     val context = LocalContext.current
-    val isCrisis = reflection.tone == "supportive_crisis" || reflection.dominant_emotion.lowercase() == "crisis"
+    val isCrisis = reflection.tone == "supportive_crisis" || reflection.dominantEmotion.lowercase() == "crisis"
 
-    val pastelAccent = when (reflection.dominant_emotion.lowercase()) {
+    val pastelAccent = when (reflection.dominantEmotion.lowercase()) {
         "mutluluk", "happiness", "joy" -> Color(0xFF86EFAC)
         "kaygı", "anxiety", "stres", "stress" -> Color(0xFFFCD34D)
         "üzüntü", "sadness", "sad" -> Color(0xFF93C5FD)
@@ -190,12 +210,12 @@ fun ReflectionContent(reflection: ReflectionResponse) {
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = DarkSurface),
+                colors = CardDefaults.cardColors(containerColor = PremiumWhiteCard),
                 border = BorderStroke(
                     1.5.dp, 
                     Brush.verticalGradient(
                         if (isCrisis) listOf(DangerRed, Color(0xFFEF4444)) 
-                        else listOf(AccentPrimary, pastelAccent)
+                        else listOf(DarkTealPrimary, pastelAccent)
                     )
                 ),
                 shape = RoundedCornerShape(20.dp)
@@ -210,25 +230,25 @@ fun ReflectionContent(reflection: ReflectionResponse) {
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
-                                imageVector = Icons.Default.AutoAwesome,
+                                imageVector = Icons.Default.Star,
                                 contentDescription = "AI",
-                                tint = if (isCrisis) DangerRed else AccentPrimary,
+                                tint = if (isCrisis) DangerRed else DarkTealPrimary,
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = reflection.reflection_title,
+                                text = reflection.reflectionTitle,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 18.sp,
-                                color = Color.White
+                                color = LoginTextColor
                             )
                         }
                     }
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = reflection.reflection_text,
+                        text = reflection.reflectionText,
                         fontSize = 14.sp,
-                        color = Color.White.copy(alpha = 0.95f),
+                        color = LoginTextColor.copy(alpha = 0.95f),
                         lineHeight = 22.sp,
                         fontWeight = FontWeight.Medium
                     )
@@ -264,14 +284,14 @@ fun ReflectionContent(reflection: ReflectionResponse) {
                                 text = "Acil ve Profesyonel Destek Hatları",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 14.sp,
-                                color = Color.White
+                                color = Color(0xFF991B1B)
                             )
                         }
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
                             text = "Kendinizi yalnız hissettiğinizde veya konuşacak bir uzmana ihtiyaç duyduğunuzda, aşağıdaki resmi kanallardan tamamen ücretsiz destek alabilirsiniz.",
                             fontSize = 12.sp,
-                            color = Color.White.copy(alpha = 0.8f),
+                            color = LoginSecondaryText.copy(alpha = 0.8f),
                             lineHeight = 18.sp,
                             textAlign = TextAlign.Start
                         )
@@ -297,7 +317,7 @@ fun ReflectionContent(reflection: ReflectionResponse) {
                                     val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:114"))
                                     context.startActivity(intent)
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = AccentPrimary),
+                                colors = ButtonDefaults.buttonColors(containerColor = DarkTealPrimary),
                                 shape = RoundedCornerShape(10.dp)
                             ) {
                                 Icon(Icons.Default.Call, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -311,7 +331,7 @@ fun ReflectionContent(reflection: ReflectionResponse) {
         }
 
         // Generated From sources card
-        if (reflection.generated_from.isNotEmpty()) {
+        if (reflection.generatedFrom.isNotEmpty()) {
             item {
                 Column(
                     modifier = Modifier.fillMaxWidth()
@@ -320,14 +340,14 @@ fun ReflectionContent(reflection: ReflectionResponse) {
                         text = "Analiz Edilen Kanallar",
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp,
-                        color = Color.Gray,
+                        color = LoginSecondaryText,
                         modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        reflection.generated_from.forEach { source ->
+                        reflection.generatedFrom.forEach { source ->
                             val label = when (source) {
                                 "emotion_summary" -> "Duygu Seyri"
                                 "behavioral_insights" -> "Davranış Örüntüleri"
@@ -337,13 +357,13 @@ fun ReflectionContent(reflection: ReflectionResponse) {
                             }
                             Box(
                                 modifier = Modifier
-                                    .background(DarkSurface, RoundedCornerShape(20.dp))
+                                    .background(SoftMintAccent, RoundedCornerShape(20.dp))
                                     .border(1.dp, pastelAccent.copy(alpha = 0.3f), RoundedCornerShape(20.dp))
                                     .padding(horizontal = 12.dp, vertical = 6.dp)
                             ) {
                                 Text(
                                     text = label,
-                                    color = Color.White.copy(alpha = 0.85f),
+                                    color = LoginTextColor.copy(alpha = 0.85f),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold
                                 )
@@ -368,13 +388,13 @@ fun EmptyReflectionView() {
         Box(
             modifier = Modifier
                 .size(64.dp)
-                .background(AccentPrimary.copy(alpha = 0.1f), RoundedCornerShape(16.dp)),
+                .background(DarkTealPrimary.copy(alpha = 0.1f), RoundedCornerShape(16.dp)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = Icons.Default.AutoAwesome,
+                imageVector = Icons.Default.Star,
                 contentDescription = null,
-                tint = AccentPrimary,
+                tint = DarkTealPrimary,
                 modifier = Modifier.size(32.dp)
             )
         }
@@ -383,14 +403,14 @@ fun EmptyReflectionView() {
             text = "Yetersiz Veri",
             fontWeight = FontWeight.Bold,
             fontSize = 18.sp,
-            color = Color.White,
+            color = LoginTextColor,
             textAlign = TextAlign.Center
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = "Kişisel zihinsel refleksiyonlarınızı hazırlayabilmemiz için son zamanlarda en az 4 adet sohbet mesajı veya mood günlüğü kaydı girmelisiniz.",
             fontSize = 14.sp,
-            color = Color.Gray,
+            color = LoginSecondaryText,
             textAlign = TextAlign.Center,
             lineHeight = 20.sp
         )
@@ -417,13 +437,13 @@ fun ErrorReflectionView(message: String, onRetry: () -> Unit) {
         Text(
             text = message,
             fontSize = 14.sp,
-            color = Color.Gray,
+            color = LoginSecondaryText,
             textAlign = TextAlign.Center
         )
         Spacer(modifier = Modifier.height(16.dp))
         Button(
             onClick = onRetry,
-            colors = ButtonDefaults.buttonColors(containerColor = AccentPrimary)
+            colors = ButtonDefaults.buttonColors(containerColor = DarkTealPrimary)
         ) {
             Text("Yeniden Dene", color = Color.White)
         }

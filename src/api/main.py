@@ -32,7 +32,7 @@ except Exception as e:
 from src.core.brute_force_protection import brute_force_protector
 from src.core.token_blacklist import token_blacklist_core
 from src.core.input_validator import input_validator_core
-from src.ai.preprocessing import prepare_model_input
+from src.ai.preprocessing import prepare_model_input, turkish_lower
 from src.core.logging_config import setup_logging
 logger = logging.getLogger(__name__)
 from src.core.middlewares import RequestLoggingMiddleware
@@ -69,7 +69,8 @@ from src.services.notification_service import refresh_user_notifications
 from src.services.reflection_engine import generate_reflection
 
 
-from src.services.auth import verify_password, get_password_hash, create_access_token, decode_access_token
+from src.services.auth import verify_password, get_password_hash, create_access_token, decode_access_token, get_current_user, security_jwt
+from src.services.gating import require_premium_user, AccessDeniedResponse
 from src.services.behavioral_insights import generate_behavioral_insights
 from src.services.smart_interventions import generate_smart_interventions
 from src.services.intervention_scheduler import schedule_user_interventions, ISTANBUL_TZ
@@ -166,29 +167,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 ## Security schemes
-security_jwt = HTTPBearer()
 security_basic = HTTPBasic()
-
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security_jwt)) -> str:
-    token = credentials.credentials
-    
-    # 1. Blacklist Zırhı (Config üzerinden yönetilir)
-    if security_config.TOKEN_BLACKLIST_ENABLED:
-        if token_blacklist_core.is_blacklisted(token):
-            logger.error(f"Blacklisted token reuse attempt! Token signature: {token[:15]}...")
-            raise HTTPException(status_code=401, detail="Oturumunuz kapatılmış. Lütfen tekrar giriş yapın.")
-    
-    # 2. Native Validation
-    payload = decode_access_token(token)
-    if not payload:
-        logger.warning(f"Invalid token use attempt! Token signature: {token[:15]}...")
-        raise HTTPException(status_code=401, detail="Geçersiz token.")
-    
-    username = payload.get("sub")
-    if not username:
-        logger.warning("Token parsed but missing 'sub' identifier.")
-        raise HTTPException(status_code=401, detail="Token hatası.")
-    return username
 
 def verify_admin(credentials: HTTPBasicCredentials = Depends(security_basic)):
     correct_user = os.getenv("ADMIN_USER", "admin")
@@ -203,11 +182,14 @@ def verify_admin(credentials: HTTPBasicCredentials = Depends(security_basic)):
 
 ## Schemas
 class LoginRequest(BaseModel):
-    username: str
+    email: Optional[str] = None
+    username: Optional[str] = None
     password: str
 
 class RegisterRequest(BaseModel):
-    username: str
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    username: Optional[str] = None
     password: str
 
 class ChatRequest(BaseModel):
@@ -248,6 +230,9 @@ class ProfileResponse(BaseModel):
     answer_length_preference: str
     created_at: str
     updated_at: str
+    id: Optional[int] = None
+    email: Optional[str] = None
+    full_name: Optional[str] = None
 
 class ProfileUpdateRequest(BaseModel):
     display_name: Optional[str] = None
@@ -461,37 +446,102 @@ def read_root():
 ## Auth Endpoints
 @app.post("/register", status_code=201)
 def register(user: RegisterRequest):
-    if not user.username or not user.password:
-        raise HTTPException(status_code=400, detail="Kullanıcı adı ve şifre gereklidir.")
+    # Backward compatibility: if email is not provided but username is, construct email and full_name from username
+    email_val = user.email
+    full_name_val = user.full_name
     
+    if not email_val and user.username:
+        email_val = f"{user.username}@example.com"
+    if not full_name_val and user.username:
+        full_name_val = user.username
+        
+    if not email_val or not user.password or not full_name_val:
+        raise HTTPException(status_code=400, detail="Ad soyad, e-posta ve şifre gereklidir.")
+    
+    # Validate full name not empty
+    full_name_clean = full_name_val.strip()
+    if not full_name_clean:
+        raise HTTPException(status_code=400, detail="Ad soyad boş bırakılamaz.")
+    
+    # Validate email format
+    email_clean = turkish_lower(email_val.strip())
+    if not email_clean or "@" not in email_clean:
+        raise HTTPException(status_code=400, detail="Geçersiz e-posta formatı.")
+        
+    # Check duplicate email
+    from src.services.database import get_user_by_email
+    if get_user_by_email(email_clean):
+        raise HTTPException(status_code=409, detail="Bu e-posta adresi zaten kayıtlı.")
+        
     if len(user.password.encode("utf-8")) > 72:
         raise HTTPException(status_code=400, detail="Şifre çok uzun (maksimum 72 byte olmalıdır).")
-    
+        
+    # Determine or generate username
+    if user.username:
+        username_clean = turkish_lower(user.username.strip())
+        from src.services.database import get_user_by_username
+        if get_user_by_username(username_clean):
+            raise HTTPException(status_code=409, detail="Bu kullanıcı adı zaten alınmış.")
+    else:
+        # Generate unique username from email prefix
+        prefix = email_clean.split("@")[0]
+        import re
+        username_base = re.sub(r"[^a-zA-Z0-9]", "", prefix)
+        if not username_base:
+            username_base = "user"
+            
+        username_clean = username_base
+        from src.services.database import get_user_by_username
+        suffix_counter = 1
+        while get_user_by_username(username_clean):
+            username_clean = f"{username_base}{suffix_counter}"
+            suffix_counter += 1
+            
     hashed = get_password_hash(user.password)
+    logger.info(f"REGISTER | Yeni kayıt denemesi. email='{email_clean}', username='{username_clean}'")
     
     try:
-        # API ve DB artık 'username' bazlı çalışıyor
-        success = create_user(user.username, hashed)
+        success = create_user(username=username_clean, password_hash=hashed, email=email_clean, full_name=full_name_clean)
         if not success:
-            raise HTTPException(status_code=409, detail="Bu kullanıcı adı zaten alınmış.")
+            logger.warning(f"REGISTER | Database error creating user: '{email_clean}'")
+            raise HTTPException(status_code=400, detail="Kayıt işlemi başarısız oldu.")
+            
+        logger.info(f"REGISTER | Kullanıcı başarıyla oluşturuldu. email='{email_clean}'")
+        return {"message": "Kayıt başarılı", "email": email_clean, "full_name": full_name_clean}
         
-        return {"message": "Kayıt başarılı, giriş yapabilirsiniz."}
-
     except HTTPException as he:
         raise he
     except Exception as e:
-        logger.error(f"Register Exception: {e}")
+        logger.error(f"REGISTER | Exception: {e}")
         raise HTTPException(status_code=500, detail=f"Sunucu hatası oluştu: {str(e)}")
 
 @app.post("/login")
 def login(request: Request, user: LoginRequest):
     from src.core.middlewares import get_client_ip
     client_ip = get_client_ip(request)
-    username_clean = user.username.strip().lower() if user.username else "anonymous"
     
-    # Combined IP + Username brute force lockout check (5 failures -> 10 minutes lockout)
-    if brute_force_protector.is_blocked(client_ip, username_clean):
-        logger.error(f"Brute-force lockout active | IP: {client_ip} | User: {username_clean}")
+    if (not user.email and not user.username) or not user.password:
+        raise HTTPException(status_code=400, detail="E-posta/kullanıcı adı ve şifre gereklidir.")
+        
+    db_user = None
+    from src.services.database import get_user_by_email, get_user_by_username
+    
+    if user.email:
+        email_clean = turkish_lower(user.email.strip())
+        db_user = get_user_by_email(email_clean)
+    elif user.username:
+        username_clean = turkish_lower(user.username.strip())
+        db_user = get_user_by_username(username_clean)
+        if db_user:
+            email_clean = db_user["email"] or "anonymous"
+        else:
+            email_clean = username_clean
+    else:
+        email_clean = "anonymous"
+        
+    # Combined IP + Email brute force lockout check
+    if brute_force_protector.is_blocked(client_ip, email_clean):
+        logger.error(f"Brute-force lockout active | IP: {client_ip} | User: {email_clean}")
         raise HTTPException(
             status_code=429, 
             detail="Çok fazla başarısız giriş denemesi. Lütfen 10 dakika sonra tekrar deneyin."
@@ -499,8 +549,8 @@ def login(request: Request, user: LoginRequest):
 
     # Başarısız Senaryo Kontrolleri
     def _handle_failure(reason: str):
-        brute_force_protector.register_failure(client_ip, username_clean)
-        logger.warning(f"Failed login attempt | IP: {client_ip} | User: {username_clean} | Reason: {reason}")
+        brute_force_protector.register_failure(client_ip, email_clean)
+        logger.warning(f"Failed login attempt | IP: {client_ip} | Email/Username: {email_clean} | Reason: {reason}")
         
         # Write login_failed audit log
         try:
@@ -510,7 +560,7 @@ def login(request: Request, user: LoginRequest):
             try:
                 compliance_service.log_security_event(
                     db=db,
-                    user_id=username_clean if username_clean != "anonymous" else None,
+                    user_id=email_clean if email_clean != "anonymous" else None,
                     event_type="login_failed",
                     ip_address=client_ip,
                     user_agent=request.headers.get("User-Agent", "unknown_ua")[:200],
@@ -522,25 +572,22 @@ def login(request: Request, user: LoginRequest):
         except Exception as audit_err:
             logger.error(f"AUDIT | Failed to write login_failed audit log: {audit_err}")
             
-        raise HTTPException(status_code=400, detail="Geçersiz e-posta veya şifre.")
+        raise HTTPException(status_code=400, detail="Geçersiz e-posta, kullanıcı adı veya şifre.")
 
-    if not user.username or not user.password:
-        _handle_failure("Missing fields")
-    
     if len(user.password.encode("utf-8")) > 72:
         _handle_failure("Password string limits exceeded")
 
-    # API ve DB artık 'username' bazlı çalışıyor
-    db_user = get_user_by_username(user.username)
     if not db_user:
+        logger.warning(f"LOGIN | Kullanıcı bulunamadı: email/username='{email_clean}'")
         _handle_failure("User not found in DB")
     
     if not verify_password(user.password, db_user["password_hash"]):
+        logger.warning(f"LOGIN | Yanlış şifre: email/username='{email_clean}'")
         _handle_failure("Incorrect password")
     
-    # Başarılı Giriş Senaryosu - Reset attempts counter
-    brute_force_protector.register_success(client_ip, username_clean)
-    logger.info(f"Successful login | IP: {client_ip} | User: {username_clean}")
+    # Reset attempts counter
+    brute_force_protector.register_success(client_ip, email_clean)
+    logger.info(f"Successful login | IP: {client_ip} | Email/Username: {email_clean}")
     
     # Write login_success audit log
     try:
@@ -550,7 +597,7 @@ def login(request: Request, user: LoginRequest):
         try:
             compliance_service.log_security_event(
                 db=db,
-                user_id=user.username,
+                user_id=db_user["username"],
                 event_type="login_success",
                 ip_address=client_ip,
                 user_agent=request.headers.get("User-Agent", "unknown_ua")[:200],
@@ -561,8 +608,21 @@ def login(request: Request, user: LoginRequest):
     except Exception as audit_err:
         logger.error(f"AUDIT | Failed to write login_success audit log: {audit_err}")
         
-    token = create_access_token(data={"sub": user.username})
-    return {"access_token": token, "token_type": "bearer", "username": user.username}
+    token_data = {
+        "sub": db_user["username"],
+        "user_id": db_user["id"],
+        "email": db_user["email"],
+        "full_name": db_user["full_name"]
+    }
+    token = create_access_token(data=token_data)
+    logger.info(f"LOGIN | Token oluşturuldu ve döndürülüyor. email='{db_user['email']}'")
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "username": db_user["username"],
+        "email": db_user["email"],
+        "full_name": db_user["full_name"]
+    }
 
 @app.post("/logout")
 def logout(credentials: HTTPAuthorizationCredentials = Depends(security_jwt), username: str = Depends(get_current_user)):
@@ -603,7 +663,19 @@ async def predict(request: Request, body: ChatRequest, background_tasks: Backgro
          risk_label = "Normal"
          logger.warning("Local AI models not loaded, falling back to default labels and GPT.")
     else:
-         emotion_label = analysis["emotion"]["label"]
+         raw_emotion = analysis["emotion"]["label"]
+         emotion_confidence = analysis["emotion"].get("confidence", 1.0)
+         # Confidence threshold: low-confidence emotion predictions are unreliable
+         # on short/technical/greeting inputs. Force "neutral" below 0.55.
+         _EMOTION_CONFIDENCE_THRESHOLD = 0.55
+         if emotion_confidence < _EMOTION_CONFIDENCE_THRESHOLD:
+             emotion_label = "neutral"
+             logger.info(
+                 "PREDICT | Emotion confidence %.3f < %.2f for user='%s' \u2014 forcing neutral (raw label: %s)",
+                 emotion_confidence, _EMOTION_CONFIDENCE_THRESHOLD, username, raw_emotion
+             )
+         else:
+             emotion_label = raw_emotion
          risk_label = analysis["crisis_detection"]["label"]
 
     emergency_msg = None
@@ -704,6 +776,10 @@ def update_profile(body: ProfileUpdateRequest, request: Request, username: str =
         name_clean = body.display_name.strip()
         if not name_clean:
             raise HTTPException(status_code=400, detail="Görünen ad boş bırakılamaz.")
+        import re
+        pattern = re.compile(r"^[a-zA-ZçğıöşüÇĞİÖŞÜ0-9._\-\s]+$")
+        if not pattern.match(name_clean):
+            raise HTTPException(status_code=400, detail="Görünen ad geçersiz karakterler içeriyor.")
         if len(name_clean) > 50:
             raise HTTPException(status_code=400, detail="Görünen ad 50 karakterden uzun olamaz.")
     
@@ -981,8 +1057,8 @@ def delete_privacy_account(request: Request, body: DeleteDataRequest, username: 
 
 # ── ADVANCED PERSONAL CONTEXT ENGINE ENDPOINTS (JWT SECURED) ───────────────
 
-@app.get("/memory", response_model=list[MemoryResponse])
-def get_user_memories_route(username: str = Depends(get_current_user)):
+@app.get("/memory", response_model=list[MemoryResponse], responses={403: {"model": AccessDeniedResponse}})
+def get_user_memories_route(username: str = Depends(require_premium_user)):
     """
     Retrieves the active, transparent, structured memory profile of the user.
     Hides raw database columns and formats correctly for UI presentation.
@@ -1008,8 +1084,8 @@ def get_user_memories_route(username: str = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail="Bellek listesi alınırken hata oluştu.")
 
 
-@app.delete("/memory/{memory_id}")
-def delete_user_memory_route(memory_id: int, username: str = Depends(get_current_user)):
+@app.delete("/memory/{memory_id}", responses={403: {"model": AccessDeniedResponse}})
+def delete_user_memory_route(memory_id: int, username: str = Depends(require_premium_user)):
     """
     Soft-deletes a single memory record with ownership validation (anti-IDOR).
     """
@@ -1025,8 +1101,8 @@ def delete_user_memory_route(memory_id: int, username: str = Depends(get_current
         raise HTTPException(status_code=500, detail="Bellek silinirken hata oluştu.")
 
 
-@app.post("/memory/refresh", response_model=MemoryConsolidationStatsResponse)
-def refresh_user_memories_route(username: str = Depends(get_current_user)):
+@app.post("/memory/refresh", response_model=MemoryConsolidationStatsResponse, responses={403: {"model": AccessDeniedResponse}})
+def refresh_user_memories_route(username: str = Depends(require_premium_user)):
     """
     Triggers deterministic memory consolidation (outdated decay, Jaccard similarity merging,
     and contradiction resolution) for the user.
@@ -1047,8 +1123,8 @@ def refresh_user_memories_route(username: str = Depends(get_current_user)):
 
 # ── NEW USER EMOTION TIMELINE ENDPOINTS (JWT SECURED) ──────────────────────
 
-@app.get("/analytics/emotions/timeline", response_model=list[EmotionTimelineItem])
-def get_user_timeline(days: int = 7, username: str = Depends(get_current_user)):
+@app.get("/analytics/emotions/timeline", response_model=list[EmotionTimelineItem], responses={403: {"model": AccessDeniedResponse}})
+def get_user_timeline(days: int = 7, username: str = Depends(require_premium_user)):
     """
     Fetches the authenticated user's chronological emotion event timeline.
     Guarantees isolation (users can only access their own timeline data).
@@ -1066,8 +1142,8 @@ def get_user_timeline(days: int = 7, username: str = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail="Hafıza/timeline yüklenirken sunucu hatası oluştu.")
 
 
-@app.get("/analytics/emotions/summary", response_model=EmotionSummaryResponse)
-def get_user_summary(days: int = 7, username: str = Depends(get_current_user)):
+@app.get("/analytics/emotions/summary", response_model=EmotionSummaryResponse, responses={403: {"model": AccessDeniedResponse}})
+def get_user_summary(days: int = 7, username: str = Depends(require_premium_user)):
     """
     Fetches the authenticated user's aggregated emotional trend summary.
     Guarantees isolation (users can only access their own summary data).
@@ -1094,8 +1170,8 @@ def get_user_summary(days: int = 7, username: str = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail="Hafıza/summary yüklenirken sunucu hatası oluştu.")
 
 
-@app.get("/analytics/insights", response_model=list[BehavioralInsightResponse])
-def get_user_insights(days: int = 7, username: str = Depends(get_current_user)):
+@app.get("/analytics/insights", response_model=list[BehavioralInsightResponse], responses={403: {"model": AccessDeniedResponse}})
+def get_user_insights(days: int = 7, username: str = Depends(require_premium_user)):
     """
     Analyzes the authenticated user's emotion timeline patterns to generate wellness insights.
     Guarantees strict isolation and privacy/crisis safe rule-based extraction.
@@ -1113,8 +1189,8 @@ def get_user_insights(days: int = 7, username: str = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail="Davranışsal içgörüler hesaplanırken hata oluştu.")
 
 
-@app.get("/analytics/interventions", response_model=list[SmartInterventionResponse])
-def get_user_interventions(days: int = 7, username: str = Depends(get_current_user)):
+@app.get("/analytics/interventions", response_model=list[SmartInterventionResponse], responses={403: {"model": AccessDeniedResponse}})
+def get_user_interventions(days: int = 7, username: str = Depends(require_premium_user)):
     """
     Analyzes user behavioral pattern insights to generate supportive, non-diagnostic wellness interventions.
     Guarantees strict isolation and privacy/crisis safe overrides.
@@ -1132,8 +1208,8 @@ def get_user_interventions(days: int = 7, username: str = Depends(get_current_us
         raise HTTPException(status_code=500, detail="Wellness müdahaleleri hesaplanırken hata oluştu.")
 
 
-@app.get("/analytics/scheduled-interventions", response_model=list[ScheduledInterventionResponse])
-def get_scheduled_interventions(username: str = Depends(get_current_user)):
+@app.get("/analytics/scheduled-interventions", response_model=list[ScheduledInterventionResponse], responses={403: {"model": AccessDeniedResponse}})
+def get_scheduled_interventions(username: str = Depends(require_premium_user)):
     """
     Fetches the authenticated user's scheduled interventions.
     Dynamically maps DB records to non-authoritative wellness titles and descriptions.
@@ -1149,8 +1225,8 @@ def get_scheduled_interventions(username: str = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail="Planlanmış wellness önerileri yüklenirken hata oluştu.")
 
 
-@app.post("/analytics/scheduled-interventions/refresh", response_model=list[ScheduledInterventionResponse])
-def refresh_scheduled_interventions(username: str = Depends(get_current_user)):
+@app.post("/analytics/scheduled-interventions/refresh", response_model=list[ScheduledInterventionResponse], responses={403: {"model": AccessDeniedResponse}})
+def refresh_scheduled_interventions(username: str = Depends(require_premium_user)):
     """
     Triggers the intervention scheduler engine for the user and returns the refreshed schedule list.
     Guarantees strict isolation and privacy/crisis safe overrides.
@@ -1224,11 +1300,11 @@ def enrich_intervention(item: dict) -> dict:
     }
 
 
-@app.get("/analytics/reports/wellness", response_model=WellnessReportResponse)
+@app.get("/analytics/reports/wellness", response_model=WellnessReportResponse, responses={403: {"model": AccessDeniedResponse}})
 def get_wellness_report_endpoint(
     period: str = "daily",
     days: int = 7,
-    username: str = Depends(get_current_user)
+    username: str = Depends(require_premium_user)
 ):
     """
     Exposes the observational mental wellness reports.
@@ -1252,10 +1328,10 @@ def get_wellness_report_endpoint(
         raise HTTPException(status_code=500, detail="Wellness raporu oluşturulurken hata oluştu.")
 
 
-@app.get("/analytics/reflections", response_model=ReflectionResponse)
+@app.get("/analytics/reflections", response_model=ReflectionResponse, responses={403: {"model": AccessDeniedResponse}})
 def get_reflections_endpoint(
     period: str = "daily",
-    username: str = Depends(get_current_user)
+    username: str = Depends(require_premium_user)
 ):
     """
     Exposes the personalized mental wellness reflection summaries.
@@ -1271,10 +1347,10 @@ def get_reflections_endpoint(
         raise HTTPException(status_code=500, detail="Zihinsel refleksiyon özeti oluşturulurken hata oluştu.")
 
 
-@app.get("/analytics/dashboard", response_model=WellnessDashboardResponse)
+@app.get("/analytics/dashboard", response_model=WellnessDashboardResponse, responses={403: {"model": AccessDeniedResponse}})
 def get_wellness_dashboard_endpoint(
     days: int = 7,
-    username: str = Depends(get_current_user)
+    username: str = Depends(require_premium_user)
 ):
     """
     Exposes the unified Mental Wellness Reporting Dashboard metrics.
@@ -1308,7 +1384,7 @@ def post_mood_journal_endpoint(
     Secured with JWT, enforces local regex safety checks, and implements privacy-safe note masking.
     """
     valid_moods = ["happy", "calm", "anxious", "sad", "angry", "tired", "neutral"]
-    if request.mood.lower() not in valid_moods:
+    if turkish_lower(request.mood) not in valid_moods:
         raise HTTPException(status_code=400, detail="Geçersiz mood değeri. Geçerli değerler: " + ", ".join(valid_moods))
     if not (1 <= request.intensity <= 5):
         raise HTTPException(status_code=400, detail="Yoğunluk 1 ile 5 arasında olmalıdır.")
@@ -1354,7 +1430,7 @@ def post_mood_journal_endpoint(
             "tired": "Yorgun",
             "neutral": "Nötr"
         }
-        mapped_emotion = mood_mapping.get(request.mood.lower(), "Nötr")
+        mapped_emotion = mood_mapping.get(turkish_lower(request.mood), "Nötr")
         save_emotion_event(
             user_id=username,
             message_id=f"journal_{int(time.time())}",
@@ -1367,7 +1443,7 @@ def post_mood_journal_endpoint(
     try:
         entry = save_mood_journal(
             user_id=username,
-            mood=request.mood.lower(),
+            mood=turkish_lower(request.mood),
             intensity=request.intensity,
             note=note_text,
             source="journal"
@@ -1701,27 +1777,91 @@ async def _process_ws_message(user_id: str, text: str, lang: str) -> dict:
 def _sync_process_message(user_id: str, text: str, lang: str) -> dict:
     """Sync wrapper — predictor inference (thread-safe)."""
     try:
-        model_input = prepare_model_input(text)
-        prediction = predictor.predict(model_input)
-        emotion = prediction.get("emotion", "neutral")
-        risk = prediction.get("risk", "low")
+        import uuid
+        import time
 
+        start_time = time.time()
+        
+        # 1. Preprocess & Validate input
+        model_input = prepare_model_input(text)
+        
+        # 2. Local AI Model prediction
+        analysis = predictor.predict_both(model_input)
+        if "error" in analysis.get("emotion", {}) or "error" in analysis.get("crisis_detection", {}):
+            emotion_label = "neutral"
+            risk_label = "Normal"
+            logger.warning("Local AI models not loaded, falling back to default labels and GPT.")
+        else:
+            emotion_label = analysis["emotion"]["label"]
+            risk_label = analysis["crisis_detection"]["label"]
+
+        # 3. User Preferences Fetching
+        from src.response_engine.models import UserPreferences
+        try:
+            profile = get_or_create_profile(user_id)
+            user_prefs = UserPreferences(
+                response_style=profile.get("response_style", "supportive"),
+                preferred_language=profile.get("preferred_language", "tr"),
+                privacy_mode=profile.get("privacy_mode", False),
+                answer_length_preference=profile.get("answer_length_preference", "medium")
+            )
+        except Exception as e:
+            logger.error(f"Error fetching profile for WS {user_id}, using defaults: {e}")
+            user_prefs = UserPreferences()
+
+        # 4. Invoke Response Engine
         engine_input = EngineInput(
-            text=text,
-            emotion=emotion,
-            risk=risk,
+            text=model_input,
+            emotion=emotion_label,
+            risk=risk_label,
             user_id=user_id,
-            language=lang,
+            language=user_prefs.preferred_language,
+            preferences=user_prefs
         )
-        engine_result = response_engine.generate(engine_input)
+        engine_output = response_engine.generate_response(engine_input)
+        chatgpt_response = engine_output.final_text
+
+        # 5. Safety alignment
+        safety_meta = engine_output.metadata.get("safety", {})
+        emergency_msg = None
+        if not safety_meta.get("is_safe", True) and safety_meta.get("safety_reason") == "immediate_danger":
+            risk_label = "kriz"
+            emergency_msg = "Lütfen acil yardıma ihtiyacınız varsa 112'yi veya 114 Psikolojik Destek Hattını arayın."
+        elif str(risk_label).lower() in ["kriz", "1", "crisis"]:
+            emergency_msg = "Lütfen acil yardıma ihtiyacınız varsa 112'yi veya 114 Psikolojik Destek Hattını arayın."
+
+        # 6. Save emotion event
+        message_id = str(uuid.uuid4())
+        save_emotion_event(
+            user_id=user_id,
+            message_id=message_id,
+            emotion=emotion_label,
+            risk=risk_label,
+            source="websocket"
+        )
+
+        # 7. Invalidate analytics cache
+        invalidate_user_caches(user_id)
+
+        # 8. Log interaction (synchronously in ThreadPoolExecutor thread)
+        latency = (time.time() - start_time) * 1000
+        log_interaction(
+            user_id=user_id, 
+            user_text=model_input, 
+            emotion=emotion_label, 
+            risk=risk_label, 
+            language=lang, 
+            latency_ms=latency
+        )
+
         return {
-            "emotion": emotion,
-            "risk": risk,
-            "response": engine_result.response,
-            "emergency_contact": engine_result.emergency_contact,
+            "emotion": emotion_label,
+            "risk": risk_label,
+            "response": chatgpt_response,
+            "emergency_contact": emergency_msg,
         }
     except Exception as exc:
-        logger.error("WS inference hatası: %s", type(exc).__name__)
+        logger.exception("WS inference hatası")
         return {"emotion": "neutral", "risk": "low", "response": "Bir hata oluştu, lütfen tekrar deneyin.", "emergency_contact": None}
 
 
@@ -1766,8 +1906,9 @@ class RecommendationFeedbackRequest(BaseModel):
     "/analytics/recommendations",
     summary="Kişiselleştirilmiş wellness önerilerini getir",
     tags=["Recommendations"],
+    responses={403: {"model": AccessDeniedResponse}}
 )
-def get_recommendations(username: str = Depends(get_current_user)):
+def get_recommendations(username: str = Depends(require_premium_user)):
     """
     Returns currently active (non-expired) wellness recommendations for the authenticated user.
 
@@ -1797,8 +1938,9 @@ def get_recommendations(username: str = Depends(get_current_user)):
     "/analytics/recommendations/refresh",
     summary="Wellness önerilerini yenile",
     tags=["Recommendations"],
+    responses={403: {"model": AccessDeniedResponse}}
 )
-def refresh_recommendations(username: str = Depends(get_current_user)):
+def refresh_recommendations(username: str = Depends(require_premium_user)):
     """
     Generates fresh personalised recommendations for the authenticated user.
 
@@ -1874,11 +2016,12 @@ def refresh_recommendations(username: str = Depends(get_current_user)):
     "/analytics/recommendations/{rec_id}/feedback",
     summary="Öneri için geri bildirim gönder",
     tags=["Recommendations"],
+    responses={403: {"model": AccessDeniedResponse}}
 )
 def submit_recommendation_feedback(
     rec_id: str,
     body: RecommendationFeedbackRequest,
-    username: str = Depends(get_current_user),
+    username: str = Depends(require_premium_user),
 ):
     """
     Records user feedback on a recommendation.
@@ -1933,6 +2076,411 @@ def submit_recommendation_feedback(
         raise HTTPException(status_code=500, detail="Geri bildirim kaydedilemedi.")
 
 
+# ── Subscription and Payment Endpoints ─────────────────────────────────────
+from decimal import Decimal
+from fastapi import Header
+from src.services.database import (
+    SessionLocal,
+    SubscriptionPlan,
+    UserSubscription,
+    PaymentTransaction,
+    SubscriptionStatus,
+    PaymentStatus
+)
+from src.services.payment_provider import get_payment_provider, ProviderNotConfigured
+
+class PlanResponseItem(BaseModel):
+    id: int
+    name: str
+    price_lira: Decimal
+    billing_interval: str
+    description: Optional[str] = None
+
+class CheckoutRequest(BaseModel):
+    plan_id: int
+
+class CheckoutResponse(BaseModel):
+    checkout_url: str
+    transaction_id: str
+    status: str
+
+class SubscriptionStatusResponse(BaseModel):
+    has_premium: bool
+    plan_name: str
+    status: str
+    current_period_end: Optional[str] = None
+    cancel_at_period_end: bool
+
+class PaymentHistoryItem(BaseModel):
+    transaction_id: str
+    amount: Decimal
+    currency: str
+    status: str
+    created_at: str
+
+@app.get("/subscriptions/plans", response_model=list[PlanResponseItem])
+def get_plans():
+    db = SessionLocal()
+    try:
+        plans = db.query(SubscriptionPlan).filter(SubscriptionPlan.is_active == True).all()
+        return [
+            PlanResponseItem(
+                id=p.id,
+                name=p.name,
+                price_lira=p.price_lira,
+                billing_interval=p.billing_interval,
+                description=p.description
+            ) for p in plans
+        ]
+    finally:
+        db.close()
+
+@app.get("/subscriptions/me", response_model=SubscriptionStatusResponse)
+def get_my_subscription(username: str = Depends(get_current_user)):
+    db = SessionLocal()
+    try:
+        sub = db.query(UserSubscription).filter(
+            UserSubscription.user_id == username,
+            UserSubscription.status == SubscriptionStatus.ACTIVE
+        ).first()
+        
+        if not sub:
+            return SubscriptionStatusResponse(
+                has_premium=False,
+                plan_name="free",
+                status="inactive",
+                current_period_end=None,
+                cancel_at_period_end=False
+            )
+        
+        plan = db.query(SubscriptionPlan).filter(SubscriptionPlan.id == sub.plan_id).first()
+        plan_name = plan.name if plan else "free"
+        has_premium = plan_name in ["premium", "professional_support"]
+        
+        return SubscriptionStatusResponse(
+            has_premium=has_premium,
+            plan_name=plan_name,
+            status=sub.status.value,
+            current_period_end=sub.current_period_end.isoformat() if sub.current_period_end else None,
+            cancel_at_period_end=sub.cancel_at_period_end
+        )
+    finally:
+        db.close()
+
+@app.post("/subscriptions/checkout", response_model=CheckoutResponse)
+def checkout(
+    body: CheckoutRequest,
+    x_idempotency_key: str = Header(..., alias="X-Idempotency-Key"),
+    username: str = Depends(get_current_user)
+):
+    if not x_idempotency_key or x_idempotency_key.strip() == "":
+        raise HTTPException(status_code=400, detail="X-Idempotency-Key header is required.")
+        
+    try:
+        uuid.UUID(x_idempotency_key)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="X-Idempotency-Key is not a valid UUID.")
+
+    db = SessionLocal()
+    try:
+        existing_tx = db.query(PaymentTransaction).filter(
+            PaymentTransaction.idempotency_key == x_idempotency_key
+        ).first()
+        
+        if existing_tx:
+            if existing_tx.user_id != username:
+                raise HTTPException(status_code=403, detail="Bu işlem anahtarı başka bir kullanıcıya ait.")
+            
+            if existing_tx.status == PaymentStatus.PENDING:
+                plan = db.query(SubscriptionPlan).filter(
+                    SubscriptionPlan.id == body.plan_id
+                ).first()
+                if not plan:
+                    raise HTTPException(status_code=404, detail="Geçersiz plan seçildi.")
+                
+                provider = get_payment_provider()
+                token = existing_tx.provider_transaction_id
+                if token and token.startswith("mock_token_"):
+                    tx_id = token[11:]
+                else:
+                    tx_id = token or f"TX_{uuid.uuid4().hex[:12].upper()}"
+                
+                checkout_session = provider.create_checkout_session(
+                    username=username,
+                    plan_name=plan.name,
+                    price=float(plan.price_lira),
+                    transaction_id=tx_id
+                )
+                
+                existing_tx.provider_transaction_id = checkout_session.get("token") or tx_id
+                db.commit()
+                
+                return CheckoutResponse(
+                    checkout_url=checkout_session["checkout_url"],
+                    transaction_id=tx_id,
+                    status="pending"
+                )
+            else:
+                raise HTTPException(status_code=409, detail="Bu işlem zaten tamamlanmış.")
+
+        plan = db.query(SubscriptionPlan).filter(
+            SubscriptionPlan.id == body.plan_id,
+            SubscriptionPlan.is_active == True
+        ).first()
+        if not plan:
+            raise HTTPException(status_code=404, detail="Geçersiz plan seçildi.")
+
+        tx_id = f"TX_{uuid.uuid4().hex[:12].upper()}"
+        
+        user_sub = db.query(UserSubscription).filter(
+            UserSubscription.user_id == username,
+            UserSubscription.plan_id == plan.id
+        ).first()
+        if not user_sub:
+            user_sub = UserSubscription(
+                user_id=username,
+                plan_id=plan.id,
+                status=SubscriptionStatus.PENDING
+            )
+            db.add(user_sub)
+            db.commit()
+            db.refresh(user_sub)
+
+        new_tx = PaymentTransaction(
+            user_id=username,
+            subscription_id=user_sub.id,
+            provider_transaction_id=None,
+            amount=plan.price_lira,
+            currency="TRY",
+            status=PaymentStatus.PENDING,
+            idempotency_key=x_idempotency_key
+        )
+        db.add(new_tx)
+        db.commit()
+        db.refresh(new_tx)
+
+        provider = get_payment_provider()
+        try:
+            checkout_session = provider.create_checkout_session(
+                username=username,
+                plan_name=plan.name,
+                price=float(plan.price_lira),
+                transaction_id=tx_id
+            )
+            
+            new_tx.provider_transaction_id = checkout_session.get("token") or tx_id
+            db.commit()
+            
+            return CheckoutResponse(
+                checkout_url=checkout_session["checkout_url"],
+                transaction_id=tx_id,
+                status="pending"
+            )
+        except ProviderNotConfigured as e:
+            db.delete(new_tx)
+            db.commit()
+            raise HTTPException(
+                status_code=503,
+                detail=f"Ödeme altyapısı henüz yapılandırılmamış. Lütfen yöneticiye başvurun. Hata: {str(e)}"
+            )
+    finally:
+        db.close()
+
+@app.get("/payments/history", response_model=list[PaymentHistoryItem], responses={403: {"model": AccessDeniedResponse}})
+def get_payment_history(username: str = Depends(require_premium_user)):
+    db = SessionLocal()
+    try:
+        txs = db.query(PaymentTransaction).filter(
+            PaymentTransaction.user_id == username
+        ).order_by(PaymentTransaction.created_at.desc()).all()
+        
+        return [
+            PaymentHistoryItem(
+                transaction_id=t.provider_transaction_id or f"TX_{t.id}",
+                amount=t.amount,
+                currency=t.currency,
+                status=t.status.value,
+                created_at=t.created_at.isoformat()
+            ) for t in txs
+        ]
+    finally:
+        db.close()
+
+@app.post("/payments/webhook/iyzico")
+async def iyzico_webhook(request: Request):
+    headers = dict(request.headers)
+    raw_body = await request.body()
+    
+    # 1. Perform signature verification
+    provider = get_payment_provider()
+    sig_verified = provider.verify_webhook_signature(headers, raw_body)
+    
+    sig_header = (
+        headers.get("X-Iyzico-Signature") or
+        headers.get("x-iyzico-signature") or
+        headers.get("X-IYZ-SIGNATURE-V3") or
+        headers.get("x-iyz-signature-v3")
+    )
+    has_sig = sig_header is not None
+    
+    # If signature is present but invalid, reject the request immediately
+    if has_sig and not sig_verified:
+        logger.error("WEBHOOK_VERIFY_FAILED | Webhook signature check failed. Rejecting request.")
+        raise HTTPException(status_code=400, detail="Geçersiz imza doğrulanamadı.")
+        
+    # 2. Parse event payload and check provider validation verification status
+    event_data = provider.parse_webhook_event(raw_body, signature_verified=sig_verified, has_signature=has_sig)
+    
+    if not event_data.get("verified", False):
+        logger.error("WEBHOOK_VERIFY_FAILED | Webhook event is unverifiable (invalid signature or retrieve API validation failed).")
+        raise HTTPException(status_code=400, detail="Geçersiz veya doğrulanamayan işlem.")
+
+    idempotency_key = event_data.get("idempotency_key")
+    provider_tx_id = event_data.get("provider_transaction_id")
+    status_str = event_data.get("status")
+    
+    if not idempotency_key:
+        logger.error("WEBHOOK_PARSE_ERROR | Missing idempotency_key / transaction correlation details.")
+        raise HTTPException(status_code=400, detail="İşlem anahtarı bulunamadı.")
+
+    # 3. Safeguard: block mock payments in production/staging environments
+    is_mock = (
+        (idempotency_key and str(idempotency_key).startswith("mock_token_")) or
+        (provider_tx_id and str(provider_tx_id).startswith("mock_token_"))
+    )
+    if is_mock and (settings.APP_ENV in ["production", "staging"] or os.getenv("APP_ENV", "").lower() in ["production", "staging"]):
+        logger.error(f"WEBHOOK_PROCESS_REJECT | Mock token received in non-dev env: {settings.APP_ENV}.")
+        raise HTTPException(status_code=400, detail="Geçersiz işlem.")
+
+    db = SessionLocal()
+    try:
+        tx = db.query(PaymentTransaction).filter(
+            (PaymentTransaction.idempotency_key == idempotency_key) |
+            (PaymentTransaction.provider_transaction_id == provider_tx_id)
+        ).first()
+
+        if not tx:
+            logger.error(f"WEBHOOK_PROCESS_ERROR | Transaction not found in local DB. IdempotencyKey: {idempotency_key}")
+            raise HTTPException(status_code=404, detail="Eşleşen işlem bulunamadı.")
+
+        current_status = tx.status
+        target_status = None
+        if status_str == "success":
+            target_status = PaymentStatus.SUCCESS
+        elif status_str in ["failed", "failure"]:
+            target_status = PaymentStatus.FAILED
+        elif status_str == "refunded":
+            target_status = PaymentStatus.REFUNDED
+        elif status_str == "canceled":
+            target_status = PaymentStatus.CANCELED
+
+        if current_status == target_status:
+            logger.info(f"WEBHOOK_PROCESS_DUPLICATE | Webhook status matches current transaction status: {tx.id} ({current_status}). Skipping.")
+            return {"status": "already_processed"}
+
+        # Define allowed state transitions:
+        # pending -> success
+        # pending -> failed
+        # pending -> canceled
+        # success -> refunded
+        # success -> canceled
+        # Others are invalid (terminal states)
+        allowed = False
+        if current_status == PaymentStatus.PENDING:
+            if target_status in [PaymentStatus.SUCCESS, PaymentStatus.FAILED, PaymentStatus.CANCELED]:
+                allowed = True
+        elif current_status == PaymentStatus.SUCCESS:
+            if target_status in [PaymentStatus.REFUNDED, PaymentStatus.CANCELED]:
+                allowed = True
+
+        if not allowed:
+            logger.warning(f"WEBHOOK_INVALID_TRANSITION | Invalid transition attempted: {current_status} -> {target_status} for transaction {tx.id}")
+            raise HTTPException(status_code=400, detail="Geçersiz işlem durum geçişi.")
+
+        # Apply state transition
+        tx.status = target_status
+        if provider_tx_id:
+            tx.provider_transaction_id = provider_tx_id
+
+        if target_status == PaymentStatus.SUCCESS:
+            if tx.subscription_id:
+                sub = db.query(UserSubscription).filter(UserSubscription.id == tx.subscription_id).first()
+                if sub:
+                    # Deactivate other subscriptions
+                    db.query(UserSubscription).filter(
+                        UserSubscription.user_id == tx.user_id,
+                        UserSubscription.id != sub.id
+                    ).update({"status": SubscriptionStatus.INACTIVE})
+                    
+                    sub.status = SubscriptionStatus.ACTIVE
+                    sub.current_period_start = datetime.now(timezone.utc)
+                    sub.current_period_end = datetime.now(timezone.utc) + timedelta(days=30)
+                    sub.cancel_at_period_end = False
+                    sub.provider_subscription_id = f"SUB_{uuid.uuid4().hex[:12].upper()}"
+            
+            # Safe logging: Only log transaction_id, user_id, status, provider result code
+            logger.info(
+                "WEBHOOK_PROCESS | TransactionID: %s | UserID: %s | Status: SUCCESS | ProviderResultCode: %s",
+                tx.provider_transaction_id, tx.user_id, status_str
+            )
+        elif target_status == PaymentStatus.FAILED:
+            if tx.subscription_id:
+                sub = db.query(UserSubscription).filter(UserSubscription.id == tx.subscription_id).first()
+                if sub:
+                    sub.status = SubscriptionStatus.PAYMENT_FAILED
+            
+            # Safe logging: Only log transaction_id, user_id, status, provider result code
+            logger.warning(
+                "WEBHOOK_PROCESS | TransactionID: %s | UserID: %s | Status: FAILED | ProviderResultCode: %s",
+                tx.provider_transaction_id, tx.user_id, status_str
+            )
+        elif target_status == PaymentStatus.REFUNDED:
+            if tx.subscription_id:
+                sub = db.query(UserSubscription).filter(UserSubscription.id == tx.subscription_id).first()
+                if sub:
+                    sub.status = SubscriptionStatus.INACTIVE
+                    sub.current_period_end = datetime.now(timezone.utc)
+            
+            # Safe logging: Only log transaction_id, user_id, status, provider result code
+            logger.info(
+                "WEBHOOK_PROCESS | TransactionID: %s | UserID: %s | Status: REFUNDED | ProviderResultCode: %s",
+                tx.provider_transaction_id, tx.user_id, status_str
+            )
+        elif target_status == PaymentStatus.CANCELED:
+            if tx.subscription_id:
+                sub = db.query(UserSubscription).filter(UserSubscription.id == tx.subscription_id).first()
+                if sub:
+                    now = datetime.now(timezone.utc)
+                    current_end = sub.current_period_end
+                    if current_end and current_end.tzinfo is None:
+                        current_end = current_end.replace(tzinfo=timezone.utc)
+                    if current_end and current_end > now:
+                        sub.cancel_at_period_end = True
+                        sub.status = SubscriptionStatus.CANCELED
+                    else:
+                        sub.status = SubscriptionStatus.CANCELED
+                        sub.current_period_end = now
+            
+            # Safe logging: Only log transaction_id, user_id, status, provider result code
+            logger.info(
+                "WEBHOOK_PROCESS | TransactionID: %s | UserID: %s | Status: CANCELED | ProviderResultCode: %s",
+                tx.provider_transaction_id, tx.user_id, status_str
+            )
+            
+        db.commit()
+        return {"status": "processed"}
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"WEBHOOK_PROCESS_EXCEPTION | Exception: {e}")
+        raise HTTPException(status_code=500, detail="Webhook işleme hatası.")
+    finally:
+        db.close()
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("src.api.main:app", host="0.0.0.0", port=8000, reload=True)
+

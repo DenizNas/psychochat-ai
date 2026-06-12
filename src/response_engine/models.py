@@ -4,13 +4,13 @@ from typing import Optional, Dict, Any, List
 class EngineConfig(BaseModel):
     """Configuration for the Response Engine"""
     timeout_seconds: int = Field(default=10, description="Timeout for GPT API calls")
-    max_memory_length: int = Field(default=12, description="Max raw history messages to fetch from DB")
+    max_memory_length: int = Field(default=24, description="Max raw history messages to fetch from DB")
     max_context_chars: int = Field(default=4000, description="Total char budget for conversation history")
     max_single_msg_chars: int = Field(default=800, description="Per-message char truncation limit")
     primary_model: str = Field(default="gpt-4o", description="Primary GPT model")
     fallback_model: str = Field(default="gpt-3.5-turbo", description="Fallback GPT model")
     temperature: float = Field(default=0.7, description="Generation temperature")
-    max_tokens: int = Field(default=250, description="Maximum tokens for generation")
+    max_tokens: int = Field(default=450, description="Maximum tokens for generation")
     max_retries: int = Field(default=1, description="Max quality-based retries (non-crisis only; keeps GPT cost bounded)")
 
 class UserPreferences(BaseModel):

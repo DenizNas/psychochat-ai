@@ -23,13 +23,11 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.psikochat.app.data.local.TokenManager
 import com.psikochat.app.ui.theme.*
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(navController: NavController, tokenManager: TokenManager) {
     val username by tokenManager.getUsername().collectAsState(initial = "Kullanıcı")
-    val scope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
@@ -51,16 +49,11 @@ fun HomeScreen(navController: NavController, tokenManager: TokenManager) {
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = { 
-                        scope.launch {
-                            tokenManager.clearAuthData()
-                            navController.navigate("auth_graph") {
-                                popUpTo("main_graph") { inclusive = true }
-                                launchSingleTop = true
-                            }
-                        }
-                    }) {
-                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Geri Dön", tint = LoginTextColor)
+                    // NOT: Bu geri ok düğmesi intentionally boş bırakıldı.
+                    // HomeScreen navigation stack'in kökü olduğundan geri gidilecek
+                    // bir sayfa yoktur. Çıkış işlemi için Ayarlar > Çıkış Yap kullanılmalıdır.
+                    IconButton(onClick = { /* HomeScreen ana ekrandır, geri yok */ }) {
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Ana Sayfa", tint = LoginTextColor.copy(alpha = 0.3f))
                     }
                 },
                 actions = {
@@ -75,7 +68,7 @@ fun HomeScreen(navController: NavController, tokenManager: TokenManager) {
         },
         bottomBar = {
             NavigationBar(
-                containerColor = Color.White,
+                containerColor = PremiumCardSurface,
                 tonalElevation = 8.dp,
                 modifier = Modifier.height(80.dp)
             ) {
@@ -168,7 +161,7 @@ fun HomeScreen(navController: NavController, tokenManager: TokenManager) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(32.dp),
-                color = Color.White.copy(alpha = 0.9f)
+                color = PremiumWhiteCard
             ) {
                 Column(modifier = Modifier.padding(24.dp)) {
                     Text(
@@ -257,14 +250,14 @@ fun SupportItem(title: String, icon: ImageVector, progress: Float, onClick: () -
             modifier = Modifier
                 .size(64.dp)
                 .clip(CircleShape)
-                .background(Color.White)
+                .background(PremiumCardSurface)
                 .padding(2.dp),
             contentAlignment = Alignment.Center
         ) {
             Surface(
                 modifier = Modifier.fillMaxSize(),
                 shape = CircleShape,
-                color = Color.White,
+                color = PremiumCardSurface,
                 shadowElevation = 1.dp
             ) {
                 Icon(icon, contentDescription = null, tint = LoginButton, modifier = Modifier.padding(16.dp))

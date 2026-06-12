@@ -1,6 +1,14 @@
 import re
 import unicodedata
 
+def turkish_lower(text: str) -> str:
+    if text is None:
+        return ""
+    if not isinstance(text, str):
+        text = str(text)
+    text = text.replace('I', 'ı').replace('İ', 'i')
+    return text.lower()
+
 def clean_text(text: str) -> str:
     if not text:
         return ""
