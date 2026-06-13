@@ -26,10 +26,18 @@ class AuthRepository(private val api: PsikoApi) {
         }
     }
     
-    suspend fun register(fullName: String, email: String, pass: String): Resource<Boolean> {
-        Log.d(TAG, "REGISTER | Request başladı, e-posta: $email")
+    suspend fun register(
+        fullName: String,
+        email: String,
+        pass: String,
+        role: String = "user",
+        title: String? = null,
+        specialty: String? = null,
+        bio: String? = null
+    ): Resource<Boolean> {
+        Log.d(TAG, "REGISTER | Request başladı, e-posta: $email, role: $role")
         return try {
-            val res = api.register(RegisterRequest(fullName, email, pass))
+            val res = api.register(RegisterRequest(fullName, email, pass, role, title, specialty, bio))
             Log.d(TAG, "REGISTER | İstek başarılı: ${res.message}")
             Resource.Success(true)
         } catch (e: Exception) {

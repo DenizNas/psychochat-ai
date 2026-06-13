@@ -17,6 +17,7 @@ class TokenManager(private val context: Context) {
         val USERNAME_KEY = stringPreferencesKey("username")
         val EMAIL_KEY = stringPreferencesKey("email")
         val FULL_NAME_KEY = stringPreferencesKey("full_name")
+        val ROLE_KEY = stringPreferencesKey("role")
         val ONBOARDING_COMPLETED_KEY = booleanPreferencesKey("onboarding_completed")
         val THEME_KEY = stringPreferencesKey("theme_preference")
     }
@@ -27,6 +28,13 @@ class TokenManager(private val context: Context) {
     
     fun getEmail(): Flow<String?> = context.dataStore.data.map { it[EMAIL_KEY] }
     fun getFullName(): Flow<String?> = context.dataStore.data.map { it[FULL_NAME_KEY] }
+    fun getRole(): Flow<String?> = context.dataStore.data.map { it[ROLE_KEY] }
+    
+    suspend fun saveRole(role: String) {
+        context.dataStore.edit { preferences ->
+            preferences[ROLE_KEY] = role
+        }
+    }
     
     fun isOnboardingCompleted(): Flow<Boolean> = context.dataStore.data.map { it[ONBOARDING_COMPLETED_KEY] ?: true }
     
@@ -44,12 +52,13 @@ class TokenManager(private val context: Context) {
         }
     }
     
-    suspend fun saveAuthData(token: String, username: String, email: String? = null, fullName: String? = null) {
+    suspend fun saveAuthData(token: String, username: String, email: String? = null, fullName: String? = null, role: String? = "user") {
         context.dataStore.edit { preferences ->
             preferences[TOKEN_KEY] = token
             preferences[USERNAME_KEY] = username
             if (email != null) preferences[EMAIL_KEY] = email
             if (fullName != null) preferences[FULL_NAME_KEY] = fullName
+            if (role != null) preferences[ROLE_KEY] = role
         }
     }
     
@@ -59,6 +68,7 @@ class TokenManager(private val context: Context) {
             preferences.remove(USERNAME_KEY)
             preferences.remove(EMAIL_KEY)
             preferences.remove(FULL_NAME_KEY)
+            preferences.remove(ROLE_KEY)
             preferences.remove(ONBOARDING_COMPLETED_KEY)
             preferences.remove(THEME_KEY)
         }

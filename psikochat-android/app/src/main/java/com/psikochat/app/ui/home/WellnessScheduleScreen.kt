@@ -40,6 +40,7 @@ import com.psikochat.app.data.api.RetrofitClient
 import com.psikochat.app.data.local.TokenManager
 import com.psikochat.app.data.model.Resource
 import com.psikochat.app.data.model.ScheduledIntervention
+import com.psikochat.app.data.model.WellnessPlanResponse
 import com.psikochat.app.data.repository.WellnessScheduleRepository
 import com.psikochat.app.ui.theme.*
 
@@ -58,7 +59,7 @@ fun WellnessScheduleScreen(navController: NavController, tokenManager: TokenMana
     // Appointment ViewModel Integration
     val context = androidx.compose.ui.platform.LocalContext.current
     val db = com.psikochat.app.data.local.AppDatabase.getInstance(context)
-    val appointmentRepository = com.psikochat.app.data.repository.AppointmentRepository(db.appointmentDao())
+    val appointmentRepository = com.psikochat.app.data.repository.AppointmentRepository(api, db.appointmentDao())
     val apptFactory = object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -237,9 +238,9 @@ fun WellnessScheduleScreen(navController: NavController, tokenManager: TokenMana
                             }
                         }
                         is Resource.Success -> {
-                            val items = scheduleState.data ?: emptyList()
-                            if (items.isEmpty()) {
-                                // Empty State
+                            val plan = scheduleState.data
+                            if (plan == null) {
+                                // Empty State fallback
                                 Column(
                                     modifier = Modifier
                                         .weight(1f)
@@ -273,7 +274,9 @@ fun WellnessScheduleScreen(navController: NavController, tokenManager: TokenMana
                                     )
                                 }
                             } else {
-                                // Sorted Chronological List
+                                val dailyGoals = plan.dailyGoals
+                                val nextAppt = allAppointments.firstOrNull { it.status == "scheduled" }
+
                                 LazyColumn(
                                     modifier = Modifier
                                         .weight(1f)
@@ -281,8 +284,204 @@ fun WellnessScheduleScreen(navController: NavController, tokenManager: TokenMana
                                     verticalArrangement = Arrangement.spacedBy(16.dp),
                                     contentPadding = PaddingValues(bottom = 24.dp)
                                 ) {
-                                    items(items, key = { item -> item.title + "_" + item.scheduledFor }) { item ->
-                                        InterventionCard(item = item, onClick = { selectedIntervention = item })
+                                    // 1. Today's Focus Card
+                                    item {
+                                        Text(
+                                            "Günün Odağı",
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = LoginTextColor,
+                                            modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
+                                        )
+                                        Card(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(20.dp),
+                                            colors = CardDefaults.cardColors(containerColor = SoftMintLight),
+                                            border = BorderStroke(1.dp, SoftMintAccent.copy(alpha = 0.5f))
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(18.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(40.dp)
+                                                        .clip(CircleShape)
+                                                        .background(Color.White),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Info,
+                                                        contentDescription = null,
+                                                        tint = DarkTealPrimary,
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
+                                                Spacer(modifier = Modifier.width(14.dp))
+                                                Column {
+                                                    Text(
+                                                        text = plan.todayFocus,
+                                                        fontSize = 13.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        color = LoginTextColor,
+                                                        lineHeight = 18.sp
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // 2. AI Wellness Summary / Reflection Card
+                                    item {
+                                        Text(
+                                            "Yapay Zeka Wellness Özeti",
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = LoginTextColor,
+                                            modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
+                                        )
+                                        Card(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(20.dp),
+                                            colors = CardDefaults.cardColors(containerColor = PremiumWhiteCard),
+                                            border = BorderStroke(1.dp, SoftMintAccent.copy(alpha = 0.5f))
+                                        ) {
+                                            Column(modifier = Modifier.padding(18.dp)) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text("✨", fontSize = 18.sp)
+                                                    Spacer(modifier = Modifier.width(10.dp))
+                                                    Text(
+                                                        text = "İyi Oluş Analizi",
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 14.sp,
+                                                        color = LoginTextColor
+                                                    )
+                                                }
+                                                Spacer(modifier = Modifier.height(8.dp))
+                                                Text(
+                                                    text = plan.aiWellnessSummary,
+                                                    fontSize = 12.sp,
+                                                    color = LoginSecondaryText,
+                                                    lineHeight = 18.sp
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // 3. Emotional Trend Card
+                                    item {
+                                        Text(
+                                            "Duygu Analizi Özeti",
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = LoginTextColor,
+                                            modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
+                                        )
+                                        Card(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(20.dp),
+                                            colors = CardDefaults.cardColors(containerColor = PremiumWhiteCard),
+                                            border = BorderStroke(1.dp, SoftMintAccent.copy(alpha = 0.5f))
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(16.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text("📊", fontSize = 18.sp)
+                                                Spacer(modifier = Modifier.width(12.dp))
+                                                Text(
+                                                    text = plan.emotionalTrendSummary,
+                                                    fontSize = 12.sp,
+                                                    color = LoginSecondaryText,
+                                                    lineHeight = 17.sp
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // 4. Appointment guidance card
+                                    if (nextAppt != null) {
+                                        item {
+                                            Text(
+                                                "Yaklaşan Görüşme Rehberi",
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = LoginTextColor,
+                                                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
+                                            )
+                                            Card(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                shape = RoundedCornerShape(20.dp),
+                                                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFBEB)), // Warm golden tint
+                                                border = BorderStroke(1.dp, Color(0xFFFDE68A))
+                                            ) {
+                                                Column(modifier = Modifier.padding(18.dp)) {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.DateRange,
+                                                            contentDescription = null,
+                                                            tint = Color(0xFFD97706),
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(8.dp))
+                                                        Text(
+                                                            text = "${nextAppt.psychologistName} ile Randevu",
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontSize = 13.sp,
+                                                            color = Color(0xFF92400E)
+                                                        )
+                                                    }
+                                                    Spacer(modifier = Modifier.height(8.dp))
+                                                    Text(
+                                                        text = "Yaklaşan Randevu: ${nextAppt.psychologistName} ile ${nextAppt.appointmentDate} saat ${nextAppt.appointmentTime}'te randevunuz bulunuyor. Görüşme öncesi duygularınızı ve sormak istediklerinizi not etmek görüşmenizi daha verimli kılabilir.",
+                                                        fontSize = 12.sp,
+                                                        color = Color(0xFF92400E),
+                                                        lineHeight = 18.sp
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // 5. Daily Goals
+                                    item {
+                                        Text(
+                                            "Günlük Wellness Önerileri",
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = LoginTextColor,
+                                            modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
+                                        )
+                                    }
+
+                                    if (dailyGoals.isEmpty()) {
+                                        item {
+                                            Surface(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                shape = RoundedCornerShape(16.dp),
+                                                color = Color.White.copy(alpha = 0.5f)
+                                            ) {
+                                                Text(
+                                                    text = "Şu an planlanmış bir wellness adımı bulunmuyor.",
+                                                    modifier = Modifier.padding(16.dp),
+                                                    fontSize = 12.sp,
+                                                    color = LoginSecondaryText,
+                                                    textAlign = TextAlign.Center
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        items(dailyGoals, key = { goal -> goal.title + "_" + goal.scheduledFor }) { goal ->
+                                            val intervention = ScheduledIntervention(
+                                                type = goal.type,
+                                                priority = goal.priority,
+                                                scheduledFor = goal.scheduledFor,
+                                                status = goal.status,
+                                                title = goal.title,
+                                                description = goal.description
+                                            )
+                                            InterventionCard(item = intervention, onClick = { selectedIntervention = intervention })
+                                        }
                                     }
                                 }
                             }

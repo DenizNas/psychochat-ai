@@ -78,6 +78,27 @@ class UserProfile(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
+class PsychologistProfile(Base):
+    __tablename__ = "psychologist_profiles"
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    title = Column(String, nullable=False)
+    specialty = Column(String, nullable=False)
+    bio = Column(String, nullable=False)
+    status = Column(String, default="pending", nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+class Appointment(Base):
+    __tablename__ = "appointments"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    psychologist_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    appointment_date = Column(String, nullable=False)
+    appointment_time = Column(String, nullable=False)
+    status = Column(String, default="scheduled", nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
 class Analytics(Base):
     __tablename__ = "analytics"
     id = Column(Integer, primary_key=True, index=True)
@@ -326,11 +347,11 @@ def migrate_recommendation_schema() -> None:
         logger.warning("MIGRATE | recommendation_events schema migration skipped: %s", migrate_err)
 
 
-def create_user(username: str, password_hash: str, email: Optional[str] = None, full_name: Optional[str] = None) -> bool:
+def create_user(username: str, password_hash: str, email: Optional[str] = None, full_name: Optional[str] = None, role: str = "user") -> bool:
 
     db = SessionLocal()
     try:
-        user = User(username=username, password_hash=password_hash, email=email, full_name=full_name)
+        user = User(username=username, password_hash=password_hash, email=email, full_name=full_name, role=role)
         db.add(user)
         db.commit()
         return True
@@ -355,7 +376,8 @@ def get_user_by_username(username: str):
                 "username": user.username,
                 "email": user.email,
                 "full_name": user.full_name,
-                "password_hash": user.password_hash
+                "password_hash": user.password_hash,
+                "role": user.role
             }
         return None
     except Exception as e:
@@ -375,7 +397,8 @@ def get_user_by_email(email: str):
                 "username": user.username,
                 "email": user.email,
                 "full_name": user.full_name,
-                "password_hash": user.password_hash
+                "password_hash": user.password_hash,
+                "role": user.role
             }
         return None
     except Exception as e:
@@ -512,10 +535,14 @@ def get_or_create_profile(username: str):
             db.refresh(profile)
         
         user = db.query(User).filter(User.username == username).first()
+        psychologist_profile = None
+        if user and user.role == "psychologist":
+            psychologist_profile = db.query(PsychologistProfile).filter(PsychologistProfile.user_id == user.id).first()
+
         return {
             "username": profile.username,
             "display_name": profile.display_name,
-            "bio": profile.bio,
+            "bio": psychologist_profile.bio if psychologist_profile else profile.bio,
             "profile_photo_url": profile.profile_photo_url,
             "preferred_language": profile.preferred_language,
             "response_style": profile.response_style,
@@ -528,6 +555,10 @@ def get_or_create_profile(username: str):
             "id": user.id if user else None,
             "email": user.email if user else None,
             "full_name": user.full_name if user else None,
+            "role": user.role if user else "user",
+            "title": psychologist_profile.title if psychologist_profile else None,
+            "specialty": psychologist_profile.specialty if psychologist_profile else None,
+            "status": psychologist_profile.status if psychologist_profile else None,
         }
     except Exception as e:
         db.rollback()
@@ -1496,6 +1527,205 @@ def seed_plans():
     except Exception as e:
         db.rollback()
         logger.error(f"SEED | Error seeding plans: {e}")
+    finally:
+        db.close()
+
+def create_psychologist(username: str, password_hash: str, email: str, full_name: str, title: str, specialty: str, bio: str) -> bool:
+    db = SessionLocal()
+    try:
+        user = User(username=username, password_hash=password_hash, email=email, full_name=full_name, role="psychologist")
+        db.add(user)
+        db.flush()
+        
+        profile = PsychologistProfile(user_id=user.id, title=title, specialty=specialty, bio=bio, status="pending")
+        db.add(profile)
+        db.commit()
+        return True
+    except IntegrityError:
+        db.rollback()
+        return False
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error creating psychologist in DB: {e}")
+        raise e
+    finally:
+        db.close()
+
+def get_approved_psychologists():
+    db = SessionLocal()
+    try:
+        results = db.query(User, PsychologistProfile).join(
+            PsychologistProfile, User.id == PsychologistProfile.user_id
+        ).filter(PsychologistProfile.status == "approved").all()
+        
+        output = []
+        for user, profile in results:
+            output.append({
+                "username": user.username,
+                "email": user.email,
+                "full_name": user.full_name,
+                "title": profile.title,
+                "specialty": profile.specialty,
+                "bio": profile.bio,
+                "status": profile.status
+            })
+        return output
+    except Exception as e:
+        logger.error(f"Error getting approved psychologists: {e}")
+        return []
+    finally:
+        db.close()
+
+def approve_psychologist(username: str) -> bool:
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.username == username).first()
+        if not user:
+            return False
+        profile = db.query(PsychologistProfile).filter(PsychologistProfile.user_id == user.id).first()
+        if not profile:
+            return False
+        profile.status = "approved"
+        profile.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        return True
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error approving psychologist: {e}")
+        return False
+    finally:
+        db.close()
+
+def create_appointment(username: str, psychologist_username: str, date_str: str, time_str: str):
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.username == username).first()
+        if not user:
+            raise ValueError("Kullanıcı bulunamadı.")
+        
+        psy = db.query(User).filter(User.username == psychologist_username).first()
+        if not psy:
+            raise ValueError("Psikolog bulunamadı.")
+        
+        if psy.role != "psychologist":
+            raise ValueError("Seçilen kullanıcı psikolog rolüne sahip değil.")
+        
+        profile = db.query(PsychologistProfile).filter(PsychologistProfile.user_id == psy.id).first()
+        if not profile or profile.status != "approved":
+            raise ValueError("Psikolog henüz onaylanmamış.")
+        
+        appt = Appointment(
+            user_id=user.id,
+            psychologist_id=psy.id,
+            appointment_date=date_str,
+            appointment_time=time_str,
+            status="scheduled"
+        )
+        db.add(appt)
+        db.commit()
+        db.refresh(appt)
+        return {
+            "id": appt.id,
+            "user_id": appt.user_id,
+            "psychologist_id": appt.psychologist_id,
+            "appointment_date": appt.appointment_date,
+            "appointment_time": appt.appointment_time,
+            "status": appt.status,
+            "created_at": appt.created_at.isoformat() if appt.created_at else None,
+            "psychologist_name": psy.full_name or psy.username,
+            "psychologist_specialty": profile.specialty
+        }
+    except Exception as e:
+        db.rollback()
+        raise e
+    finally:
+        db.close()
+
+def get_appointments_for_user(username: str):
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.username == username).first()
+        if not user:
+            return []
+        
+        if user.role == "psychologist":
+            # Psychologist sees appointments assigned to them
+            results = db.query(Appointment, User).join(
+                User, User.id == Appointment.user_id
+            ).filter(
+                Appointment.psychologist_id == user.id
+            ).all()
+            
+            output = []
+            for appt, patient in results:
+                output.append({
+                    "id": appt.id,
+                    "user_id": appt.user_id,
+                    "psychologist_id": appt.psychologist_id,
+                    "appointment_date": appt.appointment_date,
+                    "appointment_time": appt.appointment_time,
+                    "status": appt.status,
+                    "created_at": appt.created_at.isoformat() if appt.created_at else None,
+                    "patient_name": patient.full_name or patient.username,
+                    "patient_username": patient.username
+                })
+            return output
+        else:
+            # User sees their own booked appointments
+            results = db.query(Appointment, User, PsychologistProfile).join(
+                User, User.id == Appointment.psychologist_id
+            ).join(
+                PsychologistProfile, PsychologistProfile.user_id == User.id
+            ).filter(
+                Appointment.user_id == user.id
+            ).all()
+            
+            output = []
+            for appt, psy, profile in results:
+                output.append({
+                    "id": appt.id,
+                    "user_id": appt.user_id,
+                    "psychologist_id": appt.psychologist_id,
+                    "appointment_date": appt.appointment_date,
+                    "appointment_time": appt.appointment_time,
+                    "status": appt.status,
+                    "created_at": appt.created_at.isoformat() if appt.created_at else None,
+                    "psychologist_name": psy.full_name or psy.username,
+                    "psychologist_specialty": profile.specialty
+                })
+            return output
+    except Exception as e:
+        logger.error(f"Error getting appointments: {e}")
+        return []
+    finally:
+        db.close()
+
+def cancel_appointment_in_db(username: str, appointment_id: int) -> bool:
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.username == username).first()
+        if not user:
+            return False
+        
+        appt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+        if not appt:
+            return False
+        
+        if user.role == "psychologist":
+            if appt.psychologist_id != user.id:
+                return False
+        else:
+            if appt.user_id != user.id:
+                return False
+        
+        appt.status = "cancelled"
+        appt.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        return True
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error cancelling appointment: {e}")
+        return False
     finally:
         db.close()
 

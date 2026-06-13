@@ -592,7 +592,9 @@ class PersonalContextEngine:
 
         Returns: (selected_memories, total_candidates, filtered_count)
         """
-        if privacy_mode or _is_crisis(risk):
+        from src.response_engine.counseling_examples import categorize_input
+        category = categorize_input(text, emotion)
+        if privacy_mode or _is_crisis(risk) or category == "neutral":
             return [], 0, 0
 
         memories = get_active_memories_for_user(user_id)
@@ -706,9 +708,12 @@ class PersonalContextEngine:
         Maintains the same return shape as legacy process_memory() for
         backward compatibility with engine.py.
         """
-        # [NEW] Crisis and privacy early-return (no extraction, lookup, or injection)
-        if privacy_mode or _is_crisis(risk):
-            logger.info("PCE_PROCESS | user=%s | BYPASSED | crisis_or_privacy_active", user_id)
+        from src.response_engine.counseling_examples import categorize_input
+        category = categorize_input(text, emotion)
+
+        # [NEW] Crisis, privacy or neutral category (no extraction, lookup, or injection)
+        if privacy_mode or _is_crisis(risk) or category == "neutral":
+            logger.info("PCE_PROCESS | user=%s | BYPASSED | crisis_privacy_or_neutral_active (category=%s)", user_id, category)
             return {
                 "injection_text":          "",
                 "memory_count":            0,

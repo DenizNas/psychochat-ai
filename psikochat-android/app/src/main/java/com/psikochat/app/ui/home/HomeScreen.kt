@@ -66,7 +66,8 @@ fun HomeScreen(navController: NavController, tokenManager: TokenManager) {
             return ProfileViewModel(profileRepo, tokenManager) as T
         }
     }
-    val profileViewModel: ProfileViewModel = viewModel(factory = profileFactory)
+    val mainGraphEntry = remember(navController) { navController.getBackStackEntry("main_graph") }
+    val profileViewModel: ProfileViewModel = viewModel(viewModelStoreOwner = mainGraphEntry, factory = profileFactory)
     val profileState by profileViewModel.profileState.collectAsState()
 
     // 1b. Subscription ViewModel Integration
@@ -93,7 +94,7 @@ fun HomeScreen(navController: NavController, tokenManager: TokenManager) {
     val dashboardState by dashboardViewModel.dashboardState.collectAsState()
 
     // 3. Appointment ViewModel Integration
-    val appointmentRepo = com.psikochat.app.data.repository.AppointmentRepository(db.appointmentDao())
+    val appointmentRepo = com.psikochat.app.data.repository.AppointmentRepository(api, db.appointmentDao())
     val appointmentFactory = object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {

@@ -191,6 +191,10 @@ class RegisterRequest(BaseModel):
     email: Optional[str] = None
     username: Optional[str] = None
     password: str
+    role: Optional[str] = "user"
+    title: Optional[str] = None
+    specialty: Optional[str] = None
+    bio: Optional[str] = None
 
 class ChatRequest(BaseModel):
     text: str
@@ -233,6 +237,28 @@ class ProfileResponse(BaseModel):
     id: Optional[int] = None
     email: Optional[str] = None
     full_name: Optional[str] = None
+    role: str = "user"
+    title: Optional[str] = None
+    specialty: Optional[str] = None
+    status: Optional[str] = None
+
+class CreateAppointmentRequest(BaseModel):
+    psychologist_username: str
+    appointment_date: str
+    appointment_time: str
+
+class AppointmentResponse(BaseModel):
+    id: int
+    user_id: int
+    psychologist_id: int
+    appointment_date: str
+    appointment_time: str
+    status: str
+    created_at: Optional[str] = None
+    psychologist_name: Optional[str] = None
+    psychologist_specialty: Optional[str] = None
+    patient_name: Optional[str] = None
+    patient_username: Optional[str] = None
 
 class ProfileUpdateRequest(BaseModel):
     display_name: Optional[str] = None
@@ -399,6 +425,33 @@ class DeleteDataRequest(BaseModel):
     confirm: str
 
 
+class WellnessPlanGoal(BaseModel):
+    type: str
+    title: str
+    description: str
+    scheduled_for: str
+    priority: str
+    status: str
+
+
+class WellnessPlanResponse(BaseModel):
+    today_focus: str
+    daily_goals: list[WellnessPlanGoal]
+    emotional_trend_summary: str
+    ai_wellness_summary: str
+
+
+class PsychologistListItem(BaseModel):
+    username: str
+    email: Optional[str] = None
+    full_name: Optional[str] = None
+    title: str
+    specialty: str
+    bio: str
+    status: str
+
+
+
 @app.on_event("startup")
 async def load_models():
     logger = setup_logging()
@@ -498,15 +551,44 @@ def register(user: RegisterRequest):
             suffix_counter += 1
             
     hashed = get_password_hash(user.password)
-    logger.info(f"REGISTER | Yeni kayıt denemesi. email='{email_clean}', username='{username_clean}'")
+    role_clean = turkish_lower(user.role.strip()) if user.role else "user"
+    if role_clean not in ["user", "psychologist"]:
+        role_clean = "user"
+    logger.info(f"REGISTER | Yeni kayıt denemesi. email='{email_clean}', username='{username_clean}', role='{role_clean}'")
     
     try:
-        success = create_user(username=username_clean, password_hash=hashed, email=email_clean, full_name=full_name_clean)
+        if role_clean == "psychologist":
+            title_clean = user.title.strip() if user.title else ""
+            specialty_clean = user.specialty.strip() if user.specialty else ""
+            bio_clean = user.bio.strip() if user.bio else ""
+            
+            if not title_clean or not specialty_clean or not bio_clean:
+                raise HTTPException(status_code=400, detail="Psikolog kaydı için unvan, uzmanlık alanı ve biyografi gereklidir.")
+            
+            from src.services.database import create_psychologist
+            success = create_psychologist(
+                username=username_clean,
+                password_hash=hashed,
+                email=email_clean,
+                full_name=full_name_clean,
+                title=title_clean,
+                specialty=specialty_clean,
+                bio=bio_clean
+            )
+        else:
+            success = create_user(
+                username=username_clean,
+                password_hash=hashed,
+                email=email_clean,
+                full_name=full_name_clean,
+                role="user"
+            )
+            
         if not success:
             logger.warning(f"REGISTER | Database error creating user: '{email_clean}'")
             raise HTTPException(status_code=400, detail="Kayıt işlemi başarısız oldu.")
             
-        logger.info(f"REGISTER | Kullanıcı başarıyla oluşturuldu. email='{email_clean}'")
+        logger.info(f"REGISTER | Kullanıcı başarıyla oluşturuldu. email='{email_clean}', role='{role_clean}'")
         return {"message": "Kayıt başarılı", "email": email_clean, "full_name": full_name_clean}
         
     except HTTPException as he:
@@ -612,16 +694,18 @@ def login(request: Request, user: LoginRequest):
         "sub": db_user["username"],
         "user_id": db_user["id"],
         "email": db_user["email"],
-        "full_name": db_user["full_name"]
+        "full_name": db_user["full_name"],
+        "role": db_user.get("role", "user")
     }
     token = create_access_token(data=token_data)
-    logger.info(f"LOGIN | Token oluşturuldu ve döndürülüyor. email='{db_user['email']}'")
+    logger.info(f"LOGIN | Token oluşturuldu ve döndürülüyor. email='{db_user['email']}', role='{db_user.get('role', 'user')}'")
     return {
         "access_token": token,
         "token_type": "bearer",
         "username": db_user["username"],
         "email": db_user["email"],
-        "full_name": db_user["full_name"]
+        "full_name": db_user["full_name"],
+        "role": db_user.get("role", "user")
     }
 
 @app.post("/logout")
@@ -1208,8 +1292,8 @@ def get_user_interventions(days: int = 7, username: str = Depends(require_premiu
         raise HTTPException(status_code=500, detail="Wellness müdahaleleri hesaplanırken hata oluştu.")
 
 
-@app.get("/analytics/scheduled-interventions", response_model=list[ScheduledInterventionResponse], responses={403: {"model": AccessDeniedResponse}})
-def get_scheduled_interventions(username: str = Depends(require_premium_user)):
+@app.get("/analytics/scheduled-interventions", response_model=list[ScheduledInterventionResponse])
+def get_scheduled_interventions(username: str = Depends(get_current_user)):
     """
     Fetches the authenticated user's scheduled interventions.
     Dynamically maps DB records to non-authoritative wellness titles and descriptions.
@@ -1225,8 +1309,8 @@ def get_scheduled_interventions(username: str = Depends(require_premium_user)):
         raise HTTPException(status_code=500, detail="Planlanmış wellness önerileri yüklenirken hata oluştu.")
 
 
-@app.post("/analytics/scheduled-interventions/refresh", response_model=list[ScheduledInterventionResponse], responses={403: {"model": AccessDeniedResponse}})
-def refresh_scheduled_interventions(username: str = Depends(require_premium_user)):
+@app.post("/analytics/scheduled-interventions/refresh", response_model=list[ScheduledInterventionResponse])
+def refresh_scheduled_interventions(username: str = Depends(get_current_user)):
     """
     Triggers the intervention scheduler engine for the user and returns the refreshed schedule list.
     Guarantees strict isolation and privacy/crisis safe overrides.
@@ -1240,6 +1324,79 @@ def refresh_scheduled_interventions(username: str = Depends(require_premium_user
     except Exception as e:
         logger.error(f"Error in POST /analytics/scheduled-interventions/refresh: {e}")
         raise HTTPException(status_code=500, detail="Planlanmış wellness önerileri yenilenirken hata oluştu.")
+
+
+@app.get("/analytics/wellness-plan", response_model=WellnessPlanResponse)
+def get_wellness_plan(username: str = Depends(get_current_user)):
+    """
+    Fetches the consolidated wellness plan with focus, trend summary, goals, and AI summary.
+    """
+    try:
+        from src.services.database import get_user_emotion_summary, get_scheduled_interventions_for_user, get_mood_journals_for_user
+        from src.services.reflection_engine import generate_reflection
+        
+        summary = get_user_emotion_summary(user_id=username, days=7)
+        total_messages = summary.get("total_messages", 0)
+        dominant_emotion = summary.get("dominant_emotion", "Nötr")
+        
+        mood_journals = get_mood_journals_for_user(user_id=username, days=7)
+        journal_count = len(mood_journals)
+        
+        total_data = total_messages + journal_count
+        
+        if total_data < 4:
+            today_focus = "Kendinizi nasıl hissettiğinizi kaydetmek ve bir check-in yapmak."
+            emotional_trend_summary = "Henüz yeterli veri birikmedi."
+            ai_wellness_summary = "Henüz yeterli veri yok, bugün küçük bir check-in ile başlayabilirsin."
+        else:
+            focus_map = {
+                "kaygı": "Sakinleşmeye, nefes egzersizlerine ve yavaşlamaya odaklanmak.",
+                "üzüntü": "Kendinize şefkatle yaklaşmak ve hafif yürüyüşler yapmak.",
+                "öfke": "Bedensel gerginliği azaltmak ve topraklanma egzersizleri uygulamak.",
+                "mutluluk": "İçsel dengeyi korumak ve günün şükran duyulacak anlarını fark etmek.",
+                "sakin": "Dinginliği pekiştirmek ve farkındalık anlarını sürdürmek.",
+                "yorgun": "Derin dinlenmeye zaman ayırmak ve bedensel zindeliği beslemek."
+            }
+            today_focus = focus_map.get(str(dominant_emotion).lower(), "Zihinsel dengeyi korumak ve kendinize alan açmak.")
+            emotional_trend_summary = f"Son 7 günde duygularınızda en belirgin seyreden ton: {dominant_emotion}."
+            
+            reflection = generate_reflection(user_id=username, period="daily")
+            ai_wellness_summary = reflection.get("reflection_text", "Bugün kendinizi nasıl hissettiğinizi takip edin.")
+            if "yetersiz veri" in ai_wellness_summary.lower() or "yetersiz veri" in reflection.get("reflection_title", "").lower():
+                ai_wellness_summary = "Henüz yeterli veri yok, bugün küçük bir check-in ile başlayabilirsin."
+        
+        raw_interventions = get_scheduled_interventions_for_user(user_id=username)
+        if not raw_interventions:
+            from src.services.intervention_scheduler import schedule_user_interventions
+            raw_interventions = schedule_user_interventions(user_id=username)
+            
+        daily_goals = []
+        for item in raw_interventions:
+            daily_goals.append(enrich_intervention(item))
+            
+        return WellnessPlanResponse(
+            today_focus=today_focus,
+            daily_goals=daily_goals,
+            emotional_trend_summary=emotional_trend_summary,
+            ai_wellness_summary=ai_wellness_summary
+        )
+    except Exception as e:
+        logger.error(f"Error in GET /analytics/wellness-plan: {e}")
+        raise HTTPException(status_code=500, detail="Wellness planı hazırlanırken hata oluştu.")
+
+
+@app.post("/analytics/wellness-plan/refresh", response_model=WellnessPlanResponse)
+def refresh_wellness_plan(username: str = Depends(get_current_user)):
+    """
+    Triggers refresh of scheduled interventions and returns updated wellness plan.
+    """
+    try:
+        from src.services.intervention_scheduler import schedule_user_interventions
+        schedule_user_interventions(user_id=username)
+        return get_wellness_plan(username=username)
+    except Exception as e:
+        logger.error(f"Error in POST /analytics/wellness-plan/refresh: {e}")
+        raise HTTPException(status_code=500, detail="Wellness planı yenilenirken hata oluştu.")
 
 
 def enrich_intervention(item: dict) -> dict:
@@ -1556,6 +1713,77 @@ def read_admin(admin: str = Depends(verify_admin)):
         raise HTTPException(status_code=404, detail="admin.html not found.")
     with open(admin_path, "r", encoding="utf-8") as f:
         return f.read()
+
+@app.get("/psychologists", response_model=list[PsychologistListItem])
+def list_psychologists():
+    from src.services.database import get_approved_psychologists
+    try:
+        return get_approved_psychologists()
+    except Exception as e:
+        logger.error(f"Error fetching psychologists list: {e}")
+        raise HTTPException(status_code=500, detail="Psikolog listesi alınamadı.")
+
+@app.post("/admin/psychologists/{username}/approve")
+def approve_psychologist_endpoint(username: str, admin_user: str = Depends(verify_admin)):
+    from src.services.database import approve_psychologist
+    try:
+        success = approve_psychologist(username)
+        if not success:
+            raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı veya psikolog profiline sahip değil.")
+        logger.info(f"ADMIN | Psikolog onaylandı: {username} | Onaylayan: {admin_user}")
+        return {"status": "success", "message": f"Kullanıcı '{username}' psikolog olarak onaylandı."}
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in approve_psychologist_endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Onay işlemi sırasında sunucu hatası oluştu.")
+
+@app.post("/appointments", response_model=AppointmentResponse, status_code=201)
+def create_appointment_endpoint(body: CreateAppointmentRequest, username: str = Depends(get_current_user)):
+    from src.services.database import create_appointment, get_user_by_username
+    
+    db_user = get_user_by_username(username)
+    if not db_user or db_user.get("role", "user") != "user":
+        raise HTTPException(status_code=403, detail="Yalnızca normal kullanıcılar randevu oluşturabilir.")
+        
+    try:
+        appt = create_appointment(
+            username=username,
+            psychologist_username=body.psychologist_username,
+            date_str=body.appointment_date,
+            time_str=body.appointment_time
+        )
+        logger.info(f"APPOINTMENT | Appointment created successfully. User: {username}, Psy: {body.psychologist_username}")
+        return appt
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Error in create_appointment_endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Randevu oluşturulurken sunucu hatası oluştu.")
+
+@app.get("/appointments", response_model=list[AppointmentResponse])
+def get_appointments_endpoint(username: str = Depends(get_current_user)):
+    from src.services.database import get_appointments_for_user
+    try:
+        return get_appointments_for_user(username)
+    except Exception as e:
+        logger.error(f"Error in get_appointments_endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Randevular alınırken sunucu hatası oluştu.")
+
+@app.put("/appointments/{appointment_id}/cancel")
+def cancel_appointment_endpoint(appointment_id: int, username: str = Depends(get_current_user)):
+    from src.services.database import cancel_appointment_in_db
+    try:
+        success = cancel_appointment_in_db(username, appointment_id)
+        if not success:
+            raise HTTPException(status_code=400, detail="Randevu iptal edilemedi veya yetkiniz yok.")
+        logger.info(f"APPOINTMENT | Appointment cancelled. User: {username}, Appt ID: {appointment_id}")
+        return {"status": "success", "message": "Randevu başarıyla iptal edildi."}
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in cancel_appointment_endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Randevu iptal edilirken sunucu hatası oluştu.")
 
 @app.get("/health")
 def health_check():
@@ -1905,10 +2133,9 @@ class RecommendationFeedbackRequest(BaseModel):
 @app.get(
     "/analytics/recommendations",
     summary="Kişiselleştirilmiş wellness önerilerini getir",
-    tags=["Recommendations"],
-    responses={403: {"model": AccessDeniedResponse}}
+    tags=["Recommendations"]
 )
-def get_recommendations(username: str = Depends(require_premium_user)):
+def get_recommendations(username: str = Depends(get_current_user)):
     """
     Returns currently active (non-expired) wellness recommendations for the authenticated user.
 
@@ -1937,10 +2164,9 @@ def get_recommendations(username: str = Depends(require_premium_user)):
 @app.post(
     "/analytics/recommendations/refresh",
     summary="Wellness önerilerini yenile",
-    tags=["Recommendations"],
-    responses={403: {"model": AccessDeniedResponse}}
+    tags=["Recommendations"]
 )
-def refresh_recommendations(username: str = Depends(require_premium_user)):
+def refresh_recommendations(username: str = Depends(get_current_user)):
     """
     Generates fresh personalised recommendations for the authenticated user.
 
@@ -2015,13 +2241,12 @@ def refresh_recommendations(username: str = Depends(require_premium_user)):
 @app.post(
     "/analytics/recommendations/{rec_id}/feedback",
     summary="Öneri için geri bildirim gönder",
-    tags=["Recommendations"],
-    responses={403: {"model": AccessDeniedResponse}}
+    tags=["Recommendations"]
 )
 def submit_recommendation_feedback(
     rec_id: str,
     body: RecommendationFeedbackRequest,
-    username: str = Depends(require_premium_user),
+    username: str = Depends(get_current_user),
 ):
     """
     Records user feedback on a recommendation.

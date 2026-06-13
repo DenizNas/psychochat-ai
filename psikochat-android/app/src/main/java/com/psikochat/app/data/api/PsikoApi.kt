@@ -43,6 +43,12 @@ interface PsikoApi {
     @POST("/analytics/scheduled-interventions/refresh")
     suspend fun refreshScheduledInterventions(): List<ScheduledIntervention>
 
+    @GET("/analytics/wellness-plan")
+    suspend fun getWellnessPlan(): WellnessPlanResponse
+
+    @POST("/analytics/wellness-plan/refresh")
+    suspend fun refreshWellnessPlan(): WellnessPlanResponse
+
     @GET("/analytics/reports/wellness")
     suspend fun getWellnessReport(
         @retrofit2.http.Query("period") period: String,
@@ -130,4 +136,16 @@ interface PsikoApi {
 
     @GET("/payments/history")
     suspend fun getPaymentHistory(): List<PaymentHistoryDto>
+
+    @GET("/psychologists")
+    suspend fun getPsychologists(): List<PsychologistDto>
+
+    @POST("/appointments")
+    suspend fun createAppointment(@Body request: CreateAppointmentRequest): AppointmentDto
+
+    @GET("/appointments")
+    suspend fun getAppointments(): List<AppointmentDto>
+
+    @PUT("/appointments/{appointment_id}/cancel")
+    suspend fun cancelAppointment(@retrofit2.http.Path("appointment_id") appointmentId: Int): Map<String, String>
 }

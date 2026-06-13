@@ -27,6 +27,24 @@ class WellnessScheduleRepository(private val api: PsikoApi) {
         }
     }
 
+    suspend fun getWellnessPlan(): Resource<com.psikochat.app.data.model.WellnessPlanResponse> {
+        return try {
+            val response = api.getWellnessPlan()
+            Resource.Success(response)
+        } catch (e: Exception) {
+            parseError(e, "Wellness planı yüklenemedi")
+        }
+    }
+
+    suspend fun refreshWellnessPlan(): Resource<com.psikochat.app.data.model.WellnessPlanResponse> {
+        return try {
+            val response = api.refreshWellnessPlan()
+            Resource.Success(response)
+        } catch (e: Exception) {
+            parseError(e, "Wellness planı güncellenemedi")
+        }
+    }
+
     private fun <T> parseError(e: Exception, defaultMessage: String): Resource<T> {
         return when (e) {
             is HttpException -> {

@@ -208,5 +208,92 @@ class TestLocalProviderGreetingTemplateUsed(unittest.TestCase):
         self.assertTrue(matched, f"Anger response does not use anger template: {result}")
 
 
+class TestZeroMemoryLeakageForNeutralInputs(unittest.TestCase):
+    """Verify that zero memory-related context is constructed, retrieved, or formatted for neutral messages."""
+
+    def setUp(self):
+        from src.core.config import settings
+        self.original_key = settings.OPENAI_API_KEY
+        settings.OPENAI_API_KEY = "sk-dummy-test-key"
+
+        from src.response_engine.memory_profile import save_profile
+        self.user_id = "test_zero_leakage_user"
+        self.profile_data = {
+            "recurring_topics": ["stres"],
+            "recurring_emotions": ["sadness"],
+            "goals": ["meditasyon"],
+            "stressors": ["motivasyon kaybı"],
+            "coping_methods": ["nefes egzersizi"],
+            "positive_events": ["yürüyüş"],
+            "relationship_context": ["aile sorunları"],
+            "work_or_school_context": ["iş stresi"],
+            "last_advice_topics": ["breathing exercise"]
+        }
+        save_profile(self.user_id, self.profile_data)
+
+    def tearDown(self):
+        from src.core.config import settings
+        settings.OPENAI_API_KEY = self.original_key
+
+    def test_merhaba_system_prompt_contains_zero_memory_context(self):
+        from src.response_engine.prompts import build_system_prompt
+        prompt, meta = build_system_prompt(
+            language="tr",
+            emotion="neutral",
+            risk="Normal",
+            memory_context="[KULLANICI HAFIZASI]: motivasyon kaybı",
+            preferences={},
+            text="Merhaba"
+        )
+        self.assertEqual(meta["counseling_category"], "neutral")
+        self.assertNotIn("motivasyon kaybı", prompt)
+        self.assertNotIn("Kullanıcı Profil Özeti:", prompt)
+        self.assertNotIn("GEÇMİŞ KONUŞMALARDAN EDİNİLEN BAĞLAM", prompt)
+
+    def test_response_engine_generates_zero_memory_context_for_greetings(self):
+        from src.response_engine.engine import response_engine
+        from src.response_engine.models import EngineInput, UserPreferences
+        inp = EngineInput(
+            user_id=self.user_id,
+            text="Merhaba",
+            emotion="neutral",
+            risk="Normal",
+            language="tr",
+            preferences=UserPreferences(privacy_mode=False)
+        )
+        res = response_engine.generate_response(inp)
+        self.assertFalse(res.metadata["memory"]["memory_injected"])
+        self.assertEqual(res.metadata["memory"]["selected_memory_count"], 0)
+
+    def test_response_engine_generates_zero_memory_context_for_connection_test(self):
+        from src.response_engine.engine import response_engine
+        from src.response_engine.models import EngineInput, UserPreferences
+        inp = EngineInput(
+            user_id=self.user_id,
+            text="Bağlantı testi",
+            emotion="neutral",
+            risk="Normal",
+            language="tr",
+            preferences=UserPreferences(privacy_mode=False)
+        )
+        res = response_engine.generate_response(inp)
+        self.assertFalse(res.metadata["memory"]["memory_injected"])
+        self.assertEqual(res.metadata["memory"]["selected_memory_count"], 0)
+
+    def test_response_engine_does_inject_memory_for_long_emotional_inputs(self):
+        from src.response_engine.engine import response_engine
+        from src.response_engine.models import EngineInput, UserPreferences
+        inp = EngineInput(
+            user_id=self.user_id,
+            text="Bugün kendimi çok kötü hissediyorum ve hiçbir şey yapmak istemiyorum.",
+            emotion="sadness",
+            risk="Normal",
+            language="tr",
+            preferences=UserPreferences(privacy_mode=False)
+        )
+        res = response_engine.generate_response(inp)
+        self.assertNotEqual(res.metadata["counseling_category"], "neutral")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

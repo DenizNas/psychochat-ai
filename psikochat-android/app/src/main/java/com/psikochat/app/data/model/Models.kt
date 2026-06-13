@@ -8,14 +8,19 @@ data class LoginRequest(
 data class RegisterRequest(
     @SerializedName("full_name") val fullName: String,
     @SerializedName("email") val email: String,
-    @SerializedName("password") val password: String
+    @SerializedName("password") val password: String,
+    @SerializedName("role") val role: String = "user",
+    @SerializedName("title") val title: String? = null,
+    @SerializedName("specialty") val specialty: String? = null,
+    @SerializedName("bio") val bio: String? = null
 )
 data class AuthResponse(
     @SerializedName("access_token") val access_token: String,
     @SerializedName("token_type") val token_type: String,
     @SerializedName("username") val username: String,
     @SerializedName("email") val email: String? = null,
-    @SerializedName("full_name") val fullName: String? = null
+    @SerializedName("full_name") val fullName: String? = null,
+    @SerializedName("role") val role: String? = "user"
 )
 data class RegisterResponse(
     @SerializedName("message") val message: String
@@ -54,7 +59,11 @@ data class ProfileResponse(
     @SerializedName("created_at") val createdAt: String,
     @SerializedName("updated_at") val updatedAt: String,
     @SerializedName("email") val email: String? = null,
-    @SerializedName("full_name") val fullName: String? = null
+    @SerializedName("full_name") val fullName: String? = null,
+    @SerializedName("role") val role: String? = "user",
+    @SerializedName("title") val title: String? = null,
+    @SerializedName("specialty") val specialty: String? = null,
+    @SerializedName("status") val status: String? = null
 )
 
 data class UpdateProfileRequest(
@@ -296,4 +305,51 @@ data class PaymentHistoryDto(
     @SerializedName("status") val status: String,
     @SerializedName("created_at") val created_at: String
 )
+
+data class WellnessPlanGoal(
+    @SerializedName("type") val type: String,
+    @SerializedName("priority") val priority: String,
+    @SerializedName("scheduled_for") val scheduledFor: String,
+    @SerializedName("status") val status: String,
+    @SerializedName("title") val title: String,
+    @SerializedName("description") val description: String
+)
+
+data class WellnessPlanResponse(
+    @SerializedName("today_focus") val todayFocus: String,
+    @SerializedName("daily_goals") val dailyGoals: List<WellnessPlanGoal>,
+    @SerializedName("emotional_trend_summary") val emotionalTrendSummary: String,
+    @SerializedName("ai_wellness_summary") val aiWellnessSummary: String
+)
+
+data class PsychologistDto(
+    @SerializedName("username") val username: String,
+    @SerializedName("email") val email: String?,
+    @SerializedName("full_name") val fullName: String?,
+    @SerializedName("title") val title: String,
+    @SerializedName("specialty") val specialty: String,
+    @SerializedName("bio") val bio: String,
+    @SerializedName("status") val status: String
+)
+
+data class CreateAppointmentRequest(
+    @SerializedName("psychologist_username") val psychologistUsername: String,
+    @SerializedName("appointment_date") val appointmentDate: String,
+    @SerializedName("appointment_time") val appointmentTime: String
+)
+
+data class AppointmentDto(
+    @SerializedName("id") val id: Int,
+    @SerializedName("user_id") val userId: Int,
+    @SerializedName("psychologist_id") val psychologistId: Int,
+    @SerializedName("appointment_date") val appointmentDate: String,
+    @SerializedName("appointment_time") val appointmentTime: String,
+    @SerializedName("status") val status: String,
+    @SerializedName("created_at") val createdAt: String? = null,
+    @SerializedName("psychologist_name") val psychologistName: String? = null,
+    @SerializedName("psychologist_specialty") val psychologistSpecialty: String? = null,
+    @SerializedName("patient_name") val patientName: String? = null,
+    @SerializedName("patient_username") val patientUsername: String? = null
+)
+
 

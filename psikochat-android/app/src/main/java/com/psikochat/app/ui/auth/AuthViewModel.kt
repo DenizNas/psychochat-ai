@@ -30,8 +30,8 @@ class AuthViewModel(private val repository: AuthRepository, private val tokenMan
             when (val res = repository.login(email, pass)) {
                 is Resource.Success -> {
                     res.data?.let { 
-                        tokenManager.saveAuthData(it.access_token, it.username, it.email, it.fullName)
-                        Log.d(TAG, "LOGIN | Başarılı, token DataStore'a kaydedildi. Kullanıcı: ${it.username}")
+                        tokenManager.saveAuthData(it.access_token, it.username, it.email, it.fullName, it.role)
+                        Log.d(TAG, "LOGIN | Başarılı, token DataStore'a kaydedildi. Kullanıcı: ${it.username}, Rol: ${it.role}")
                     }
                     _authState.value = Resource.Success(true)
                 }
@@ -44,16 +44,34 @@ class AuthViewModel(private val repository: AuthRepository, private val tokenMan
         }
     }
     
-    fun register(fullName: String, email: String, pass: String) {
+    fun register(
+        fullName: String,
+        email: String,
+        pass: String,
+        role: String = "user",
+        title: String? = null,
+        specialty: String? = null,
+        bio: String? = null
+    ) {
         if (fullName.isBlank() || email.isBlank() || pass.isBlank()) {
             _authState.value = Resource.Error("Ad soyad, e-posta ve şifre boş bırakılamaz")
             return
         }
+        if (role == "psychologist") {
+            if (title.isNullOrBlank() || specialty.isNullOrBlank() || bio.isNullOrBlank()) {
+                _authState.value = Resource.Error("Psikolog kaydı için unvan, uzmanlık alanı ve biyografi boş bırakılamaz")
+                return
+            }
+            if (bio.length < 20) {
+                _authState.value = Resource.Error("Biyografi en az 20 karakter uzunluğunda olmalıdır")
+                return
+            }
+        }
         
         viewModelScope.launch {
             _authState.value = Resource.Loading()
-            Log.d(TAG, "REGISTER | Kayıt işlemi başlatıldı. E-posta: $email")
-            when (val res = repository.register(fullName, email, pass)) {
+            Log.d(TAG, "REGISTER | Kayıt işlemi başlatıldı. E-posta: $email, Rol: $role")
+            when (val res = repository.register(fullName, email, pass, role, title, specialty, bio)) {
                 is Resource.Success -> {
                     Log.d(TAG, "REGISTER | Kayıt başarılı, otomatik giriş yapılmıyor.")
                     _authState.value = Resource.Success(true)

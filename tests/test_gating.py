@@ -141,3 +141,33 @@ class TestPremiumAccessGating(unittest.TestCase):
         res_me = client.get("/subscriptions/me", headers=self.free_headers)
         self.assertEqual(res_me.status_code, 200)
         self.assertEqual(res_me.json()["has_premium"], False)
+
+    def test_free_user_can_access_wellness_plan(self):
+        """Verify free user is allowed to access and refresh wellness plan."""
+        client = TestClient(app)
+        res = client.get("/analytics/wellness-plan", headers=self.free_headers)
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertIn("today_focus", data)
+        self.assertIn("ai_wellness_summary", data)
+
+        res_ref = client.post("/analytics/wellness-plan/refresh", headers=self.free_headers)
+        self.assertEqual(res_ref.status_code, 200)
+
+    def test_free_user_can_access_recommendations(self):
+        """Verify free user is allowed to access and refresh recommendations."""
+        client = TestClient(app)
+        res = client.get("/analytics/recommendations", headers=self.free_headers)
+        self.assertEqual(res.status_code, 200)
+
+        res_ref = client.post("/analytics/recommendations/refresh", headers=self.free_headers)
+        self.assertEqual(res_ref.status_code, 200)
+
+    def test_free_user_can_access_scheduled_interventions(self):
+        """Verify free user is allowed to access and refresh scheduled interventions."""
+        client = TestClient(app)
+        res = client.get("/analytics/scheduled-interventions", headers=self.free_headers)
+        self.assertEqual(res.status_code, 200)
+
+        res_ref = client.post("/analytics/scheduled-interventions/refresh", headers=self.free_headers)
+        self.assertEqual(res_ref.status_code, 200)

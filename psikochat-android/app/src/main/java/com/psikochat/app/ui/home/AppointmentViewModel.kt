@@ -4,16 +4,17 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.psikochat.app.data.local.entity.CachedAppointment
+import com.psikochat.app.data.model.AppointmentDto
+import com.psikochat.app.data.model.PsychologistDto
+import com.psikochat.app.data.model.Resource
 import com.psikochat.app.data.repository.AppointmentRepository
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
-// TODO: Replace local appointment storage with backend appointment API when available.
 class AppointmentViewModel(private val repository: AppointmentRepository) : ViewModel() {
 
     val nextAppointment: StateFlow<CachedAppointment?> = repository.getNextUpcomingAppointment()
@@ -30,27 +31,59 @@ class AppointmentViewModel(private val repository: AppointmentRepository) : View
             initialValue = emptyList()
         )
 
-    fun bookAppointment(psychologistName: String, specialty: String, date: String, time: String) {
+    private val _psychologistsState = MutableStateFlow<Resource<List<PsychologistDto>>>(Resource.Loading())
+    val psychologistsState: StateFlow<Resource<List<PsychologistDto>>> = _psychologistsState.asStateFlow()
+
+    private val _bookAppointmentState = MutableStateFlow<Resource<AppointmentDto>?>(null)
+    val bookAppointmentState: StateFlow<Resource<AppointmentDto>?> = _bookAppointmentState.asStateFlow()
+
+    private val _fetchState = MutableStateFlow<Resource<List<AppointmentDto>>?>(null)
+    val fetchState: StateFlow<Resource<List<AppointmentDto>>?> = _fetchState.asStateFlow()
+
+    init {
+        loadApprovedPsychologists()
+        loadAppointments()
+    }
+
+    fun loadApprovedPsychologists() {
         viewModelScope.launch {
-            val appointment = CachedAppointment(
-                psychologistName = psychologistName,
-                psychologistSpecialty = specialty,
-                appointmentDate = date,
-                appointmentTime = time,
-                createdAt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
-            )
-            repository.insertAppointment(appointment)
+            _psychologistsState.value = Resource.Loading()
+            _psychologistsState.value = repository.getApprovedPsychologists()
         }
+    }
+
+    fun loadAppointments() {
+        viewModelScope.launch {
+            _fetchState.value = Resource.Loading()
+            _fetchState.value = repository.fetchAppointmentsFromBackend()
+        }
+    }
+
+    fun bookAppointment(psychologistUsername: String, date: String, time: String) {
+        viewModelScope.launch {
+            _bookAppointmentState.value = Resource.Loading()
+            val result = repository.createAppointment(psychologistUsername, date, time)
+            _bookAppointmentState.value = result
+            if (result is Resource.Success) {
+                loadAppointments()
+            }
+        }
+    }
+
+    fun clearBookAppointmentState() {
+        _bookAppointmentState.value = null
     }
 
     fun cancelAppointment(id: Int) {
         viewModelScope.launch {
-            repository.cancelAppointment(id)
+            val result = repository.cancelAppointment(id)
+            if (result is Resource.Success) {
+                loadAppointments()
+            }
         }
     }
 }
 
-// TODO: Replace local appointment storage with backend appointment API when available.
 class AppointmentViewModelFactory(private val repository: AppointmentRepository) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {

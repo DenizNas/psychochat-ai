@@ -220,9 +220,11 @@ class ResponseEngine:
             except Exception as audit_err:
                 logger.error(f"Failed to log crisis bypass audit log: {audit_err}")
         else:
-            # Build safe memory inlays if not in crisis and privacy mode is disabled
+            # Build safe memory inlays if not in crisis, privacy mode is disabled, and category is not neutral
             safe_memory_inlays = {}
-            if not is_crisis and not engine_input.preferences.privacy_mode:
+            from src.response_engine.counseling_examples import categorize_input
+            category = categorize_input(engine_input.text, engine_input.emotion)
+            if not is_crisis and not engine_input.preferences.privacy_mode and category != "neutral":
                 try:
                     from src.response_engine.memory_profile import load_profile
                     profile = load_profile(engine_input.user_id)

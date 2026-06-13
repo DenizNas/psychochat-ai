@@ -64,13 +64,25 @@ fun RegistrationScreen(navController: NavController, tokenManager: TokenManager)
     val scrollState = rememberScrollState()
     val context = androidx.compose.ui.platform.LocalContext.current
 
+    var accountType by remember { mutableStateOf("user") }
+    var title by remember { mutableStateOf("") }
+    var specialty by remember { mutableStateOf("") }
+    var bio by remember { mutableStateOf("") }
+    var showPsychologistSuccessDialog by remember { mutableStateOf(false) }
+
     if (authState is Resource.Success && (authState.data == true)) {
-        LaunchedEffect(Unit) {
-            viewModel.resetState()
-            android.widget.Toast.makeText(context, "Kayıt başarılı", android.widget.Toast.LENGTH_SHORT).show()
-            navController.navigate("login") {
-                popUpTo("register") { inclusive = true }
-                launchSingleTop = true
+        if (accountType == "psychologist") {
+            LaunchedEffect(Unit) {
+                showPsychologistSuccessDialog = true
+            }
+        } else {
+            LaunchedEffect(Unit) {
+                viewModel.resetState()
+                android.widget.Toast.makeText(context, "Kayıt başarılı", android.widget.Toast.LENGTH_SHORT).show()
+                navController.navigate("login") {
+                    popUpTo("register") { inclusive = true }
+                    launchSingleTop = true
+                }
             }
         }
     }
@@ -196,7 +208,45 @@ fun RegistrationScreen(navController: NavController, tokenManager: TokenManager)
                         modifier = Modifier.align(Alignment.Start)
                     )
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Account Type Selector
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        listOf("Kullanıcı" to "user", "Psikolog" to "psychologist").forEach { (label, value) ->
+                            val isSelected = accountType == value
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = if (isSelected) SoftMintAccent else SoftMintLight,
+                                border = BorderStroke(1.dp, if (isSelected) DarkTealPrimary else SoftMintAccent),
+                                modifier = Modifier.weight(1f).clickable { accountType = value }
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = if (isSelected) DarkTealPrimary else LoginTextColor,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(vertical = 12.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    if (accountType == "psychologist") {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Psikolog hesapları onay sürecinden geçer.",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontWeight = FontWeight.Medium,
+                                color = SecondaryTealText
+                            ),
+                            modifier = Modifier.align(Alignment.Start)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     // Full Name Field
                     OutlinedTextField(
@@ -331,6 +381,90 @@ fun RegistrationScreen(navController: NavController, tokenManager: TokenManager)
                         singleLine = true
                     )
 
+                    if (accountType == "psychologist") {
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Title Field
+                        OutlinedTextField(
+                            value = title,
+                            onValueChange = { title = it; validationError = null },
+                            placeholder = { Text("Unvan (Örn: Uzm. Psk.)", color = LoginSecondaryText) },
+                            textStyle = TextStyle(color = LoginTextColor),
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = SecondaryTealText
+                                )
+                            },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = SoftMintLight,
+                                unfocusedContainerColor = SoftMintLight,
+                                focusedBorderColor = DarkTealPrimary,
+                                unfocusedBorderColor = SoftMintAccent,
+                                cursorColor = DarkTealPrimary
+                            ),
+                            singleLine = true
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Specialty Field
+                        OutlinedTextField(
+                            value = specialty,
+                            onValueChange = { specialty = it; validationError = null },
+                            placeholder = { Text("Uzmanlık Alanı (Örn: Bilişsel Terapi)", color = LoginSecondaryText) },
+                            textStyle = TextStyle(color = LoginTextColor),
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Star,
+                                    contentDescription = null,
+                                    tint = SecondaryTealText
+                                )
+                            },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = SoftMintLight,
+                                unfocusedContainerColor = SoftMintLight,
+                                focusedBorderColor = DarkTealPrimary,
+                                unfocusedBorderColor = SoftMintAccent,
+                                cursorColor = DarkTealPrimary
+                            ),
+                            singleLine = true
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Bio Field
+                        OutlinedTextField(
+                            value = bio,
+                            onValueChange = { bio = it; validationError = null },
+                            placeholder = { Text("Biyografi (En az 20 karakter)", color = LoginSecondaryText) },
+                            textStyle = TextStyle(color = LoginTextColor),
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = null,
+                                    tint = SecondaryTealText
+                                )
+                            },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = SoftMintLight,
+                                unfocusedContainerColor = SoftMintLight,
+                                focusedBorderColor = DarkTealPrimary,
+                                unfocusedBorderColor = SoftMintAccent,
+                                cursorColor = DarkTealPrimary
+                            ),
+                            maxLines = 4,
+                            minLines = 2
+                        )
+                    }
+
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // Error Warning Banner
@@ -376,8 +510,16 @@ fun RegistrationScreen(navController: NavController, tokenManager: TokenManager)
                                 validationError = "Geçersiz e-posta formatı."
                             } else if (password != confirmPassword) {
                                 validationError = "Şifreler birbirleriyle eşleşmedi."
+                            } else if (accountType == "psychologist" && (title.isBlank() || specialty.isBlank() || bio.isBlank())) {
+                                validationError = "Lütfen tüm alanları doldurunuz."
+                            } else if (accountType == "psychologist" && bio.length < 20) {
+                                validationError = "Biyografi en az 20 karakter uzunluğunda olmalıdır."
                             } else {
-                                viewModel.register(fullName, email, password)
+                                if (accountType == "psychologist") {
+                                    viewModel.register(fullName, email, password, "psychologist", title, specialty, bio)
+                                } else {
+                                    viewModel.register(fullName, email, password, "user")
+                                }
                             }
                         },
                         modifier = Modifier
@@ -430,5 +572,33 @@ fun RegistrationScreen(navController: NavController, tokenManager: TokenManager)
                 )
             }
         }
+    }
+
+    if (showPsychologistSuccessDialog) {
+        AlertDialog(
+            onDismissRequest = { },
+            title = { Text("Kayıt Başarılı", fontWeight = FontWeight.Bold, color = LoginTextColor) },
+            text = {
+                Text(
+                    "Psikolog hesabınız oluşturuldu. Onay sürecinden sonra giriş yapabilirsiniz.",
+                    color = LoginTextColor
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showPsychologistSuccessDialog = false
+                        viewModel.resetState()
+                        navController.navigate("login") {
+                            popUpTo("register") { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = DarkTealPrimary)
+                ) {
+                    Text("Tamam", color = Color.White)
+                }
+            }
+        )
     }
 }

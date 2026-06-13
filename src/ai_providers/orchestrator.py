@@ -105,9 +105,12 @@ class AIOrchestrator:
         if (is_openai_primary and openai_key_missing) or self._is_circuit_open():
             if self._is_circuit_open():
                 reason = "circuit_breaker_open"
+            elif not settings.OPENAI_API_KEY or not settings.OPENAI_API_KEY.strip():
+                reason = "api_key_missing"
+                logger.warning("AI_ORCHESTRATOR | OpenAI API key is missing — skipping to secondary provider.")
             elif openai_key_missing:
                 reason = "api_key_missing_or_placeholder"
-                logger.warning("AI_ORCHESTRATOR | OpenAI API key is missing or placeholder — skipping to secondary provider.")
+                logger.warning("AI_ORCHESTRATOR | OpenAI API key is placeholder — skipping to secondary provider.")
             else:
                 reason = "api_key_missing"
             logger.info("AI_ORCHESTRATOR | OpenAI bypassed! Reason: %s", reason)

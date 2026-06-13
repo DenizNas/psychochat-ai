@@ -53,7 +53,8 @@ fun ProfileScreen(navController: NavController, tokenManager: TokenManager) {
             return ProfileViewModel(repository, tokenManager) as T
         }
     }
-    val viewModel: ProfileViewModel = viewModel(factory = factory)
+    val mainGraphEntry = remember(navController) { navController.getBackStackEntry("main_graph") }
+    val viewModel: ProfileViewModel = viewModel(viewModelStoreOwner = mainGraphEntry, factory = factory)
     
     val subscriptionRepo = com.psikochat.app.data.repository.SubscriptionRepository(api)
     val subscriptionFactory = object : ViewModelProvider.Factory {

@@ -41,7 +41,8 @@ fun SettingsScreen(navController: NavController, tokenManager: TokenManager) {
             return ProfileViewModel(repository, tokenManager) as T
         }
     }
-    val viewModel: ProfileViewModel = viewModel(factory = factory)
+    val mainGraphEntry = remember(navController) { navController.getBackStackEntry("main_graph") }
+    val viewModel: ProfileViewModel = viewModel(viewModelStoreOwner = mainGraphEntry, factory = factory)
     
     val profileState by viewModel.profileState.collectAsState()
     val updateState by viewModel.updateState.collectAsState()

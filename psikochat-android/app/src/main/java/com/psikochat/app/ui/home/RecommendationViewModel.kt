@@ -43,10 +43,6 @@ class RecommendationViewModel(
     /** Loads active (cached) recommendations from backend. */
     fun loadRecommendations() {
         viewModelScope.launch {
-            if (SubscriptionViewModel.getCachedSubscription()?.has_premium != true) {
-                _state.value = Resource.Error("Premium Öneriler", isPremiumRequired = true)
-                return@launch
-            }
             _state.value = Resource.Loading()
             _state.value = repository.getRecommendations()
         }
@@ -58,10 +54,6 @@ class RecommendationViewModel(
      */
     fun refresh() {
         viewModelScope.launch {
-            if (SubscriptionViewModel.getCachedSubscription()?.has_premium != true) {
-                _state.value = Resource.Error("Premium Öneriler", isPremiumRequired = true)
-                return@launch
-            }
             _isRefreshing.value = true
             when (val result = repository.refreshRecommendations()) {
                 is Resource.Success -> {

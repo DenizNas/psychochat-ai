@@ -9,6 +9,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavController
+import com.psikochat.app.data.api.RetrofitClient
 import com.psikochat.app.data.local.TokenManager
 import com.psikochat.app.ui.theme.LoginBackground
 import com.psikochat.app.ui.theme.LoginButton
@@ -19,11 +20,27 @@ fun SplashScreen(navController: NavController, tokenManager: TokenManager) {
     LaunchedEffect(Unit) {
         val token = tokenManager.getToken().first()
         if (!token.isNullOrEmpty()) {
-            val completed = tokenManager.isOnboardingCompleted().first()
-            if (!completed) {
-                navController.navigate("onboarding_wizard") { popUpTo("splash") { inclusive = true } }
+            var role = tokenManager.getRole().first()
+            if (role.isNullOrEmpty()) {
+                try {
+                    val api = RetrofitClient.create(tokenManager)
+                    val profile = api.getProfile()
+                    role = profile.role ?: "user"
+                    tokenManager.saveRole(role)
+                } catch (e: Exception) {
+                    role = "user"
+                }
+            }
+
+            if (role == "psychologist") {
+                navController.navigate("psychologist_graph") { popUpTo("splash") { inclusive = true } }
             } else {
-                navController.navigate("main_graph") { popUpTo("splash") { inclusive = true } }
+                val completed = tokenManager.isOnboardingCompleted().first()
+                if (!completed) {
+                    navController.navigate("onboarding_wizard") { popUpTo("splash") { inclusive = true } }
+                } else {
+                    navController.navigate("main_graph") { popUpTo("splash") { inclusive = true } }
+                }
             }
         } else {
             navController.navigate("auth_graph") { popUpTo("splash") { inclusive = true } }

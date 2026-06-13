@@ -18,14 +18,27 @@ class ProfileViewModel(
 
     companion object {
         private var cachedProfile: ProfileResponse? = null
+        private var photoUpdateTimestamp: Long? = null
 
         fun clearCache() {
             cachedProfile = null
+            photoUpdateTimestamp = null
         }
     }
 
+    private fun applyCacheBuster(profile: ProfileResponse?): ProfileResponse? {
+        if (profile == null) return null
+        val timestamp = photoUpdateTimestamp ?: return profile
+        val rawUrl = profile.profilePhotoUrl
+        if (rawUrl.isNullOrBlank()) return profile
+        
+        val separator = if (rawUrl.contains("?")) "&" else "?"
+        val bustedUrl = "$rawUrl${separator}v=$timestamp"
+        return profile.copy(profilePhotoUrl = bustedUrl)
+    }
+
     private val _profileState = MutableStateFlow<Resource<ProfileResponse>>(
-        cachedProfile?.let { Resource.Success(it) } ?: Resource.Loading()
+        applyCacheBuster(cachedProfile)?.let { Resource.Success(it) } ?: Resource.Loading()
     )
     val profileState: StateFlow<Resource<ProfileResponse>> = _profileState
 
@@ -38,11 +51,12 @@ class ProfileViewModel(
 
     fun loadProfile() {
         viewModelScope.launch {
-            _profileState.value = Resource.Loading(cachedProfile)
+            _profileState.value = Resource.Loading(applyCacheBuster(cachedProfile))
             val result = repository.getProfile()
             if (result is Resource.Success) {
-                cachedProfile = result.data
-                _profileState.value = result
+                val processed = applyCacheBuster(result.data)
+                cachedProfile = processed
+                _profileState.value = Resource.Success(processed!!)
                 result.data?.themePreference?.let {
                     tokenManager.saveThemePreference(it)
                 }
@@ -82,8 +96,9 @@ class ProfileViewModel(
             val result = repository.updateProfile(request)
             _updateState.value = result
             if (result is Resource.Success) {
-                cachedProfile = result.data
-                _profileState.value = result
+                val processed = applyCacheBuster(result.data)
+                cachedProfile = processed
+                _profileState.value = Resource.Success(processed!!)
                 result.data?.themePreference?.let {
                     tokenManager.saveThemePreference(it)
                 }
@@ -97,8 +112,10 @@ class ProfileViewModel(
             val result = repository.uploadProfilePhoto(filePart)
             _updateState.value = result
             if (result is Resource.Success) {
-                cachedProfile = result.data
-                _profileState.value = result
+                photoUpdateTimestamp = System.currentTimeMillis()
+                val processed = applyCacheBuster(result.data)
+                cachedProfile = processed
+                _profileState.value = Resource.Success(processed!!)
             }
         }
     }

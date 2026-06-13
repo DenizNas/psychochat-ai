@@ -62,11 +62,16 @@ fun LoginScreen(navController: NavController, tokenManager: TokenManager) {
     
     if (authState is Resource.Success && (authState.data == true)) {
         LaunchedEffect(Unit) {
-            val completed = tokenManager.isOnboardingCompleted().first()
-            if (!completed) {
-                navController.navigate("onboarding_wizard") { popUpTo("auth_graph") { inclusive = true } }
+            val role = tokenManager.getRole().first()
+            if (role == "psychologist") {
+                navController.navigate("psychologist_graph") { popUpTo("auth_graph") { inclusive = true } }
             } else {
-                navController.navigate("main_graph") { popUpTo("auth_graph") { inclusive = true } }
+                val completed = tokenManager.isOnboardingCompleted().first()
+                if (!completed) {
+                    navController.navigate("onboarding_wizard") { popUpTo("auth_graph") { inclusive = true } }
+                } else {
+                    navController.navigate("main_graph") { popUpTo("auth_graph") { inclusive = true } }
+                }
             }
         }
     }

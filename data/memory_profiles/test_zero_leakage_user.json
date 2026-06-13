@@ -1,0 +1,30 @@
+{
+  "recurring_topics": [
+    "stres"
+  ],
+  "recurring_emotions": [
+    "sadness"
+  ],
+  "goals": [
+    "meditasyon"
+  ],
+  "stressors": [
+    "motivasyon kaybı"
+  ],
+  "coping_methods": [
+    "nefes egzersizi"
+  ],
+  "positive_events": [
+    "yürüyüş"
+  ],
+  "relationship_context": [
+    "aile sorunları"
+  ],
+  "work_or_school_context": [
+    "iş stresi"
+  ],
+  "last_advice_topics": [
+    "breathing exercise",
+    "social connection"
+  ]
+}

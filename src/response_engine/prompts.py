@@ -351,6 +351,11 @@ def build_system_prompt(
         (system_prompt_str, prompt_meta_dict)
         prompt_meta is used for structured logging in engine.py
     """
+    # Determine category early. If it is neutral, force memory_context to empty.
+    category = "crisis" if _is_crisis(risk) else categorize_input(text, emotion)
+    if category == "neutral":
+        memory_context = ""
+
     sections_used: List[str] = []
 
     # [1] Base
@@ -413,8 +418,6 @@ def build_system_prompt(
         sections_used.append("retry_instruction")
 
     assembled = "\n\n".join(parts)
-
-    category = "crisis" if _is_crisis(risk) else categorize_input(text, emotion)
 
     prompt_meta = {
         "prompt_version": PROMPT_VERSION,

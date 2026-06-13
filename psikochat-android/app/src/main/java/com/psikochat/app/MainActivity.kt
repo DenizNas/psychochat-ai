@@ -183,6 +183,12 @@ class MainActivity : ComponentActivity() {
                                 PaymentMethodsScreen(navController, tokenManager, paymentResult = paymentResult)
                             }
                         }
+
+                        navigation(startDestination = "psychologist_dashboard", route = "psychologist_graph") {
+                            composable("psychologist_dashboard") {
+                                com.psikochat.app.ui.psychologist.PsychologistDashboardScreen(navController, tokenManager)
+                            }
+                        }
                     }
                 }
             }
