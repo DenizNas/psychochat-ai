@@ -19,10 +19,13 @@ import com.psikochat.app.ui.auth.LoginScreen
 import com.psikochat.app.ui.auth.SplashScreen
 import com.psikochat.app.ui.auth.RegistrationScreen
 import com.psikochat.app.ui.auth.ForgotPasswordScreen
+import com.psikochat.app.ui.auth.VerificationCodeScreen
+import com.psikochat.app.ui.auth.ResetPasswordScreen
 import com.psikochat.app.ui.auth.OnboardingWizardScreen
 import com.psikochat.app.ui.home.HomeScreen
 import com.psikochat.app.ui.home.ProfileScreen
 import com.psikochat.app.ui.home.SettingsScreen
+import com.psikochat.app.ui.home.AdminPsychologistApprovalScreen
 import com.psikochat.app.ui.home.TherapyScreen
 import com.psikochat.app.ui.home.WellnessScheduleScreen
 import com.psikochat.app.ui.home.WellnessReportScreen
@@ -33,6 +36,7 @@ import com.psikochat.app.ui.home.PrivacyDataScreen
 import com.psikochat.app.ui.home.RecommendationScreen
 import com.psikochat.app.ui.home.AchievementGalleryScreen
 import com.psikochat.app.ui.home.WeeklyRecapScreen
+import com.psikochat.app.ui.home.NotificationSettingsScreen
 import com.psikochat.app.ui.home.PaymentMethodsScreen
 import com.psikochat.app.ui.chat.ChatScreen
 import com.psikochat.app.ui.insights.ReflectionScreen
@@ -62,9 +66,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // 1. Initialize local notification channel and check permissions
+        // 1. Initialize local notification channels
         NotificationHelper.createNotificationChannel(this)
-        NotificationHelper.checkAndRequestPermission(this)
 
         // 2. Initialize WorkManager background polling for production/release mode
         if (!BuildConfig.DEBUG) {
@@ -140,13 +143,30 @@ class MainActivity : ComponentActivity() {
                         navigation(startDestination = "login", route = "auth_graph") {
                             composable("login") { LoginScreen(navController, tokenManager) }
                             composable("register") { RegistrationScreen(navController, tokenManager) }
-                            composable("forgot_password") { ForgotPasswordScreen(navController) }
+                            composable("forgot_password") { ForgotPasswordScreen(navController, tokenManager) }
+                            composable(
+                                "verification_code/{email}",
+                                arguments = listOf(androidx.navigation.navArgument("email") { type = androidx.navigation.NavType.StringType })
+                            ) { backStackEntry ->
+                                val email = backStackEntry.arguments?.getString("email") ?: ""
+                                val decodedEmail = java.net.URLDecoder.decode(email, "UTF-8")
+                                VerificationCodeScreen(navController, decodedEmail, tokenManager)
+                            }
+                            composable(
+                                "reset_password/{resetToken}",
+                                arguments = listOf(androidx.navigation.navArgument("resetToken") { type = androidx.navigation.NavType.StringType })
+                            ) { backStackEntry ->
+                                val resetToken = backStackEntry.arguments?.getString("resetToken") ?: ""
+                                val decodedToken = java.net.URLDecoder.decode(resetToken, "UTF-8")
+                                ResetPasswordScreen(navController, decodedToken, tokenManager)
+                            }
                         }
                         
                         navigation(startDestination = "home", route = "main_graph") {
                             composable("home") { HomeScreen(navController, tokenManager) }
                             composable("profile") { ProfileScreen(navController, tokenManager) }
                             composable("settings") { SettingsScreen(navController, tokenManager) }
+                            composable("admin_psychologists") { AdminPsychologistApprovalScreen(navController, tokenManager) }
                             composable("therapy") { TherapyScreen(navController, tokenManager) }
                             composable("chat") { ChatScreen(navController, tokenManager) }
                             composable("chat/{conversationId}") { backStackEntry ->
@@ -169,6 +189,7 @@ class MainActivity : ComponentActivity() {
                             composable("achievements") { AchievementGalleryScreen(navController, tokenManager) }
                             // Phase 8B.5: Weekly Wellness Recap
                             composable("weekly_recap") { WeeklyRecapScreen(navController, tokenManager) }
+                            composable("notification_settings") { NotificationSettingsScreen(navController, tokenManager) }
                             composable(
                                 route = "payment_methods?payment_result={payment_result}",
                                 arguments = listOf(
@@ -187,6 +208,12 @@ class MainActivity : ComponentActivity() {
                         navigation(startDestination = "psychologist_dashboard", route = "psychologist_graph") {
                             composable("psychologist_dashboard") {
                                 com.psikochat.app.ui.psychologist.PsychologistDashboardScreen(navController, tokenManager)
+                            }
+                            composable("psychologist_availability") {
+                                com.psikochat.app.ui.psychologist.PsychologistAvailabilityScreen(navController, tokenManager)
+                            }
+                            composable("psychologist_appointments") {
+                                com.psikochat.app.ui.psychologist.PsychologistAppointmentsScreen(navController, tokenManager)
                             }
                         }
                     }

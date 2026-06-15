@@ -44,6 +44,8 @@ import com.psikochat.app.data.realtime.ConnectionState
 import com.psikochat.app.data.realtime.RealtimeWebSocketManager
 import com.psikochat.app.data.repository.ChatRepository
 import com.psikochat.app.ui.theme.*
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -115,6 +117,7 @@ fun ChatScreen(navController: NavController, tokenManager: TokenManager, convers
     val isAssistantTyping by viewModel.isAssistantTyping.collectAsState()
     val connectionState by viewModel.connectionState.collectAsState()
     val crisisAlert by viewModel.crisisAlert.collectAsState()
+    val activeEmergencySupport by viewModel.activeEmergencySupport.collectAsState()
     
     val currentToken by tokenManager.getToken().collectAsState(initial = "loading")
 
@@ -131,7 +134,7 @@ fun ChatScreen(navController: NavController, tokenManager: TokenManager, convers
         }
     }
 
-    LaunchedEffect(messages.size, isLoading) {
+    LaunchedEffect(messages.size, isLoading, activeEmergencySupport) {
         val totalItems = listState.layoutInfo.totalItemsCount
         val isUserMessageAdded = messages.size > previousMessagesSize && messages.lastOrNull()?.role == "user"
         
@@ -139,7 +142,7 @@ fun ChatScreen(navController: NavController, tokenManager: TokenManager, convers
             val lastVisibleItemIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
             val isAtBottom = lastVisibleItemIndex >= totalItems - 3
 
-            if (isUserMessageAdded || isAtBottom) {
+            if (isUserMessageAdded || isAtBottom || activeEmergencySupport != null) {
                 listState.animateScrollToItem(totalItems - 1)
             }
         }
@@ -156,11 +159,10 @@ fun ChatScreen(navController: NavController, tokenManager: TokenManager, convers
                 CenterAlignedTopAppBar(
                     title = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Favorite,
-                                contentDescription = null,
-                                modifier = Modifier.size(22.dp),
-                                tint = LoginButton
+                            Image(
+                                painter = painterResource(id = com.psikochat.app.R.drawable.ic_logo),
+                                contentDescription = "Logo",
+                                modifier = Modifier.size(22.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             val titleText = remember(messages, conversationId) {
@@ -324,6 +326,43 @@ fun ChatScreen(navController: NavController, tokenManager: TokenManager, convers
                 } else if (isAssistantTyping) {
                     item {
                         TypingIndicator()
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+                }
+
+                activeEmergencySupport?.let { support ->
+                    item {
+                        EmergencySupportCard(
+                            title = support.emergencyTitle ?: "Acil Destek",
+                            message = support.emergencyMessage ?: "Güvende kalman öncelikli. Yalnız kalmamaya çalış ve mümkünse hemen destek al.",
+                            emergencyPhone = support.emergencyPhone,
+                            onDialEmergency = {
+                                try {
+                                    val intent = Intent(Intent.ACTION_DIAL).apply {
+                                        data = Uri.parse("tel:${support.emergencyPhone ?: "112"}")
+                                    }
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Arama başlatılamadı", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            onDialTrusted = {
+                                try {
+                                    val intent = Intent(Intent.ACTION_DIAL).apply {
+                                        data = Uri.parse("tel:")
+                                    }
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Arama başlatılamadı", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            onPsychologistSupport = {
+                                navController.navigate("therapy")
+                            },
+                            onContinueChat = {
+                                viewModel.clearEmergencySupport()
+                            }
+                        )
                         Spacer(modifier = Modifier.height(12.dp))
                     }
                 }
@@ -829,6 +868,100 @@ fun ConnectionBanner(state: ConnectionState) {
                     color = if (state is ConnectionState.Failed) Color(0xFFC62828) else Color(0xFFE65100),
                     fontWeight = FontWeight.Medium
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun EmergencySupportCard(
+    title: String,
+    message: String,
+    emergencyPhone: String?,
+    onDialEmergency: () -> Unit,
+    onDialTrusted: () -> Unit,
+    onPsychologistSupport: () -> Unit,
+    onContinueChat: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp, horizontal = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        shape = RoundedCornerShape(16.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f))
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (!emergencyPhone.isNullOrBlank()) {
+                    Button(
+                        onClick = onDialEmergency,
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(text = "${emergencyPhone}'yi Ara", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+                
+                Button(
+                    onClick = onDialTrusted,
+                    colors = ButtonDefaults.buttonColors(containerColor = DarkTealPrimary),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(text = "Güvendiğim Birini Ara", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+                
+                Button(
+                    onClick = onPsychologistSupport,
+                    colors = ButtonDefaults.buttonColors(containerColor = SoftMintAccent),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(text = "Randevu / Psikolog Desteği", color = LoginTextColor, fontWeight = FontWeight.Bold)
+                }
+                
+                TextButton(
+                    onClick = onContinueChat,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                ) {
+                    Text(text = "Sohbete Devam Et", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
+                }
             }
         }
     }

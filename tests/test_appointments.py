@@ -96,6 +96,15 @@ class TestAppointmentAPI(unittest.TestCase):
         res = client.post("/admin/psychologists/psy_user/approve", headers=admin_headers)
         self.assertEqual(res.status_code, 200)
 
+        # 4.5. Set availability for Monday 14:00
+        res = client.post("/psychologists/me/availability", json={
+            "day_of_week": 0, # Monday
+            "start_time": "13:00",
+            "end_time": "15:00",
+            "slot_duration_minutes": 60
+        }, headers=psy_headers)
+        self.assertEqual(res.status_code, 201)
+
         # 5. Book appointment with APPROVED psychologist (should succeed)
         res = client.post("/appointments", json=book_payload, headers=user_headers)
         self.assertEqual(res.status_code, 201)
@@ -110,19 +119,48 @@ class TestAppointmentAPI(unittest.TestCase):
         res = client.post("/appointments", json=book_payload, headers=psy_headers)
         self.assertEqual(res.status_code, 403) # Forbidden
 
-        # 7. Check GET /appointments for patient (user sees own appointments)
+        # 7. Check GET /appointments for patient (user sees own appointments, no patient_email)
         res = client.get("/appointments", headers=user_headers)
         self.assertEqual(res.status_code, 200)
         self.assertEqual(len(res.json()), 1)
         self.assertEqual(res.json()[0]["psychologist_name"], "Dr. Therapist")
+        self.assertIsNone(res.json()[0].get("patient_email"))
 
-        # 8. Check GET /appointments for psychologist (psychologist sees assigned appointments)
+        # 8. Check GET /appointments for psychologist (psychologist sees assigned appointments and patient_email)
         res = client.get("/appointments", headers=psy_headers)
         self.assertEqual(res.status_code, 200)
         self.assertEqual(len(res.json()), 1)
         self.assertEqual(res.json()[0]["patient_name"], "Test Patient")
+        self.assertEqual(res.json()[0]["patient_email"], "patient@example.com")
 
-        # 9. Cancel appointment safely
+        # 9. Register & approve a second psychologist to verify isolation
+        psy2_payload = {
+            "username": "psy_user2",
+            "password": "password123",
+            "email": "psy2@example.com",
+            "full_name": "Dr. Therapist Two",
+            "role": "psychologist",
+            "title": "Uzm. Psk.",
+            "specialty": "Kaygı",
+            "bio": "Merhaba, ben uzman klinik psikoloğum ve bu biyografi en az 20 karakterdir."
+        }
+        client.post("/register", json=psy2_payload)
+        client.post("/admin/psychologists/psy_user2/approve", headers=admin_headers)
+        
+        login_res_psy2 = client.post("/login", json={"email": "psy2@example.com", "password": "password123"})
+        psy2_token = login_res_psy2.json()["access_token"]
+        psy2_headers = {"Authorization": f"Bearer {psy2_token}"}
+
+        # Verify psy2 cannot see psy1's appointments
+        res_psy2 = client.get("/appointments", headers=psy2_headers)
+        self.assertEqual(res_psy2.status_code, 200)
+        self.assertEqual(len(res_psy2.json()), 0) # isolation check
+
+        # Verify psy2 cannot cancel psy1's appointment
+        cancel_psy2_res = client.put(f"/appointments/{appt_id}/cancel", headers=psy2_headers)
+        self.assertEqual(cancel_psy2_res.status_code, 400) # Bad Request/Forbidden
+
+        # 10. Cancel appointment safely (soft-cancel)
         cancel_res = client.put(f"/appointments/{appt_id}/cancel", headers=user_headers)
         self.assertEqual(cancel_res.status_code, 200)
         self.assertEqual(cancel_res.json()["status"], "success")
@@ -130,3 +168,12 @@ class TestAppointmentAPI(unittest.TestCase):
         # Check status is updated to cancelled
         res = client.get("/appointments", headers=user_headers)
         self.assertEqual(res.json()[0]["status"], "cancelled")
+
+        # Check that record is NOT deleted (soft-cancel validation)
+        db = SessionLocal()
+        try:
+            db_appt = db.query(Appointment).filter(Appointment.id == appt_id).first()
+            self.assertIsNotNone(db_appt)
+            self.assertEqual(db_appt.status, "cancelled")
+        finally:
+            db.close()

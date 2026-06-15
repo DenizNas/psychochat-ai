@@ -115,4 +115,36 @@ interface PsikoApi {
         @retrofit2.http.Path("rec_id") recId: String,
         @Body request: RecommendationFeedbackRequest
     ): Map<String, String>
+
+    // ── Admin psychologist approval management endpoints ──
+    @GET("/admin/psychologists/pending")
+    suspend fun getPendingPsychologists(
+        @retrofit2.http.Header("Authorization") authHeader: String
+    ): List<AdminPsychologist>
+
+    @GET("/admin/psychologists/all")
+    suspend fun getAllPsychologists(
+        @retrofit2.http.Header("Authorization") authHeader: String
+    ): List<AdminPsychologist>
+
+    @POST("/admin/psychologists/{username}/approve")
+    suspend fun approvePsychologist(
+        @retrofit2.http.Path("username") username: String,
+        @retrofit2.http.Header("Authorization") authHeader: String
+    ): Map<String, String>
+
+    @POST("/admin/psychologists/{username}/reject")
+    suspend fun rejectPsychologist(
+        @retrofit2.http.Path("username") username: String,
+        @retrofit2.http.Header("Authorization") authHeader: String
+    ): Map<String, String>
+
+    @POST("/auth/password-reset/request")
+    suspend fun requestPasswordReset(@Body request: PasswordResetRequest): Map<String, String>
+
+    @POST("/auth/password-reset/verify")
+    suspend fun verifyPasswordResetCode(@Body request: PasswordResetVerifyRequest): PasswordResetVerifyResponse
+
+    @POST("/auth/password-reset/complete")
+    suspend fun completePasswordReset(@Body request: PasswordResetCompleteRequest): Map<String, String>
 }

@@ -32,6 +32,9 @@ import com.psikochat.app.data.local.TokenManager
 import com.psikochat.app.data.model.Resource
 import com.psikochat.app.ui.theme.*
 import com.psikochat.app.ui.components.*
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import com.psikochat.app.R
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -94,7 +97,7 @@ fun HomeScreen(navController: NavController, tokenManager: TokenManager) {
     val dashboardState by dashboardViewModel.dashboardState.collectAsState()
 
     // 3. Appointment ViewModel Integration
-    val appointmentRepo = com.psikochat.app.data.repository.AppointmentRepository(api, db.appointmentDao())
+    val appointmentRepo = com.psikochat.app.data.repository.AppointmentRepository(api, db.appointmentDao(), context)
     val appointmentFactory = object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -136,12 +139,26 @@ fun HomeScreen(navController: NavController, tokenManager: TokenManager) {
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
-                    Text(
-                        "PsikoChat Paneli",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = LoginTextColor
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.ic_logo),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clip(CircleShape),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "PsikoChat Paneli",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = LoginTextColor
+                        )
+                    }
                 },
                 actions = {
                     IconButton(onClick = { /* Menu Action placeholder */ }) {
@@ -492,7 +509,7 @@ fun HomeScreen(navController: NavController, tokenManager: TokenManager) {
                     navController.navigate("payment_methods")
                 }
                 MenuRow(icon = Icons.Default.Notifications, title = "Bildirimler") {
-                    showNotificationDialog = true
+                    navController.navigate("notification_settings")
                 }
                 MenuRow(icon = Icons.Default.Lock, title = "Güvenlik") {
                     navController.navigate("privacy_data")

@@ -176,3 +176,100 @@ def get_crisis_safe_response(language: str = "tr", category: str = "default") ->
         import random
         return random.choice(res)
     return res
+
+def classify_crisis_level(text: str, risk_label: str) -> str:
+    """
+    Classifies the crisis level of the user input into:
+    none, low, medium, high, imminent
+    """
+    if not text or not text.strip():
+        return "none"
+
+    text_lower = text.lower()
+    
+    # 1. Imminent checks (Immediate intent or danger)
+    imminent_keywords = [
+        r"kendime zarar vermek üzereyim",
+        r"kendime zarar veriyorum",
+        r"birine zarar vereceğim",
+        r"birine zarar verecegim",
+        r"birini öldüreceğim",
+        r"birini öldürecegim",
+        r"kendimi asıyorum",
+        r"kendimi asacağım",
+        r"kendimi asacagım",
+    ]
+    for pat in imminent_keywords:
+        if re.search(pat, text_lower, flags=_RE_FLAGS):
+            return "imminent"
+            
+    for pat in UNSAFE_PATTERNS.get(CAT_IMMEDIATE_DANGER, []):
+        if re.search(pat, text_lower, flags=_RE_FLAGS):
+            return "imminent"
+            
+    # 2. High checks (Suicidal ideation, self-harm intent, serious violence ideation)
+    high_keywords = [
+        r"yaşamak istemiyorum",
+        r"yaşamak\s*anlamsız",
+        r"ölmek istiyorum",
+        r"intihar etmek istiyorum",
+        r"intihar\s*düşünüyorum",
+        r"kendimi öldürmeyi düşünüyorum",
+        r"yaşamıma son vermek",
+        r"hayatıma son vermek",
+        r"kendime zarar vermek istiyorum",
+        r"kendimi kesmek istiyorum",
+        r"birini öldürmeyi düşünüyorum",
+        r"birine zarar vermeyi düşünüyorum",
+    ]
+    for pat in high_keywords:
+        if re.search(pat, text_lower, flags=_RE_FLAGS):
+            return "high"
+            
+    for category in [CAT_SUICIDE, CAT_SELF_HARM]:
+        for pat in UNSAFE_PATTERNS.get(category, []):
+            if re.search(pat, text_lower, flags=_RE_FLAGS):
+                return "high"
+                
+    # 3. Medium check: if ML model predicts crisis but no keyword overrides it
+    is_model_crisis = str(risk_label).lower() in ["kriz", "1", "crisis"]
+    if is_model_crisis:
+        return "medium"
+        
+    # 4. Low check: check for general sadness, anxiety, distress terms
+    distress_indicators = [
+        r"kötü\s*hissediyorum", r"kötüyüm", r"kaygılıyım", r"üzgünüm", 
+        r"ağlamak", r"stresliyim", r"çaresiz", r"canım\s*sıkkın"
+    ]
+    for pat in distress_indicators:
+        if re.search(pat, text_lower, flags=_RE_FLAGS):
+            return "low"
+            
+    return "none"
+
+def get_custom_crisis_response(crisis_level: str, text: str) -> str:
+    """
+    Generates a concise safety-first crisis response in Turkish.
+    """
+    text_lower = text.lower()
+    is_violence = any(re.search(pat, text_lower, flags=_RE_FLAGS) for pat in [r"birine zarar", r"birini öldür", r"zarar vereceğim", r"zarar verecegim"])
+    
+    if is_violence:
+        ack = "Şu an yoğun bir öfke veya zarar verme düşüncesiyle karşı karşıya olduğunu duyuyorum. Güvende kalman ve çevrendekilerin güvenliği en önemli konudur."
+    else:
+        ack = "Şu an çok zor bir süreçten geçtiğini ve büyük bir acı hissettiğini duyuyorum. Güvende kalman en öncelikli konudur."
+        
+    response_parts = [
+        ack,
+        "Şu an yalnız kalmaman önemli.",
+        "Türkiye'deysen 112 Acil Çağrı Merkezi'ni arayabilirsin. Eğer başka bir yerdeysen, bulunduğun ülkedeki acil yardım hattını arayabilirsin.",
+        "Lütfen hemen yakınında olan veya güvendiğin birini arayarak yanında kalmasını iste."
+    ]
+    
+    is_imminent_harm = (crisis_level == "imminent")
+    if is_imminent_harm and not is_violence:
+        response_parts.append("Kendine zarar vermek için kullanabileceğin tüm araçlardan veya maddelerden hemen uzaklaşmanı öneririm.")
+        
+    response_parts.append("Şu anda kendine zarar verme ihtimalin yakın mı?")
+    
+    return " ".join(response_parts)

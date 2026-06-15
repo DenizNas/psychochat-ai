@@ -34,7 +34,13 @@ data class ChatResponse(
     @SerializedName("emotion") val emotion: String, 
     @SerializedName("risk") val risk: String, 
     @SerializedName("response") val response: String, 
-    @SerializedName("emergency_contact") val emergencyContact: String?
+    @SerializedName("emergency_contact") val emergencyContact: String?,
+    @SerializedName("is_crisis") val isCrisis: Boolean? = null,
+    @SerializedName("crisis_level") val crisisLevel: String? = null,
+    @SerializedName("show_emergency_support") val showEmergencySupport: Boolean? = null,
+    @SerializedName("emergency_phone") val emergencyPhone: String? = null,
+    @SerializedName("emergency_title") val emergencyTitle: String? = null,
+    @SerializedName("emergency_message") val emergencyMessage: String? = null
 )
 data class HistoryItem(
     @SerializedName("id") val id: Int? = null,
@@ -323,6 +329,7 @@ data class WellnessPlanResponse(
 )
 
 data class PsychologistDto(
+    @SerializedName("id") val id: Int? = null,
     @SerializedName("username") val username: String,
     @SerializedName("email") val email: String?,
     @SerializedName("full_name") val fullName: String?,
@@ -349,7 +356,75 @@ data class AppointmentDto(
     @SerializedName("psychologist_name") val psychologistName: String? = null,
     @SerializedName("psychologist_specialty") val psychologistSpecialty: String? = null,
     @SerializedName("patient_name") val patientName: String? = null,
-    @SerializedName("patient_username") val patientUsername: String? = null
+    @SerializedName("patient_username") val patientUsername: String? = null,
+    @SerializedName("patient_email") val patientEmail: String? = null
 )
+
+data class AvailabilityDto(
+    @SerializedName("id") val id: Int,
+    @SerializedName("psychologist_id") val psychologistId: Int,
+    @SerializedName("day_of_week") val dayOfWeek: Int,
+    @SerializedName("start_time") val startTime: String,
+    @SerializedName("end_time") val endTime: String,
+    @SerializedName("slot_duration_minutes") val slotDurationMinutes: Int,
+    @SerializedName("is_active") val isActive: Boolean,
+    @SerializedName("created_at") val createdAt: String? = null,
+    @SerializedName("updated_at") val updatedAt: String? = null
+)
+
+data class CreateAvailabilityRequest(
+    @SerializedName("day_of_week") val dayOfWeek: Int,
+    @SerializedName("start_time") val startTime: String,
+    @SerializedName("end_time") val endTime: String,
+    @SerializedName("slot_duration_minutes") val slotDurationMinutes: Int
+)
+
+data class UpdateAvailabilityRequest(
+    @SerializedName("day_of_week") val dayOfWeek: Int? = null,
+    @SerializedName("start_time") val startTime: String? = null,
+    @SerializedName("end_time") val endTime: String? = null,
+    @SerializedName("slot_duration_minutes") val slotDurationMinutes: Int? = null,
+    @SerializedName("is_active") val isActive: Boolean? = null
+)
+
+data class AvailableSlotDto(
+    @SerializedName("time") val time: String,
+    @SerializedName("available") val available: Boolean
+)
+
+data class AvailableSlotsResponse(
+    @SerializedName("psychologist_id") val psychologistId: Int,
+    @SerializedName("date") val date: String,
+    @SerializedName("slots") val slots: List<AvailableSlotDto>
+)
+
+data class AdminPsychologist(
+    @SerializedName("username") val username: String,
+    @SerializedName("full_name") val fullName: String?,
+    @SerializedName("email") val email: String?,
+    @SerializedName("title") val title: String,
+    @SerializedName("specialty") val specialty: String,
+    @SerializedName("status") val status: String,
+    @SerializedName("created_at") val createdAt: String
+)
+
+data class PasswordResetRequest(
+    @SerializedName("email") val email: String
+)
+
+data class PasswordResetVerifyRequest(
+    @SerializedName("email") val email: String,
+    @SerializedName("code") val code: String
+)
+
+data class PasswordResetVerifyResponse(
+    @SerializedName("reset_token") val reset_token: String
+)
+
+data class PasswordResetCompleteRequest(
+    @SerializedName("reset_token") val reset_token: String,
+    @SerializedName("new_password") val new_password: String
+)
+
 
 

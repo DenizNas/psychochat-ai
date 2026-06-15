@@ -180,6 +180,16 @@ def verify_admin(credentials: HTTPBasicCredentials = Depends(security_basic)):
         )
     return credentials.username
 
+def require_psychologist_user(username: str = Depends(get_current_user)):
+    from src.services.database import get_user_by_username
+    db_user = get_user_by_username(username)
+    if not db_user or db_user.get("role") != "psychologist":
+        raise HTTPException(
+            status_code=403,
+            detail="Bu işlemi yalnızca yetkilendirilmiş psikologlar gerçekleştirebilir."
+        )
+    return db_user
+
 ## Schemas
 class LoginRequest(BaseModel):
     email: Optional[str] = None
@@ -196,6 +206,20 @@ class RegisterRequest(BaseModel):
     specialty: Optional[str] = None
     bio: Optional[str] = None
 
+class PasswordResetRequest(BaseModel):
+    email: str
+
+class PasswordResetVerifyRequest(BaseModel):
+    email: str
+    code: str
+
+class PasswordResetVerifyResponse(BaseModel):
+    reset_token: str
+
+class PasswordResetCompleteRequest(BaseModel):
+    reset_token: str
+    new_password: str
+
 class ChatRequest(BaseModel):
     text: str
     language: Optional[str] = "tr"
@@ -205,6 +229,12 @@ class ChatResponse(BaseModel):
     risk: str
     response: str
     emergency_contact: Optional[str] = None
+    is_crisis: Optional[bool] = None
+    crisis_level: Optional[str] = None
+    show_emergency_support: Optional[bool] = None
+    emergency_phone: Optional[str] = None
+    emergency_title: Optional[str] = None
+    emergency_message: Optional[str] = None
 
 class MemoryResponse(BaseModel):
     id: int
@@ -259,6 +289,7 @@ class AppointmentResponse(BaseModel):
     psychologist_specialty: Optional[str] = None
     patient_name: Optional[str] = None
     patient_username: Optional[str] = None
+    patient_email: Optional[str] = None
 
 class ProfileUpdateRequest(BaseModel):
     display_name: Optional[str] = None
@@ -442,6 +473,7 @@ class WellnessPlanResponse(BaseModel):
 
 
 class PsychologistListItem(BaseModel):
+    id: Optional[int] = None
     username: str
     email: Optional[str] = None
     full_name: Optional[str] = None
@@ -449,6 +481,56 @@ class PsychologistListItem(BaseModel):
     specialty: str
     bio: str
     status: str
+
+
+class AdminPsychologistListItem(BaseModel):
+    id: Optional[int] = None
+    username: str
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    title: str
+    specialty: str
+    status: str
+    created_at: Optional[str] = None
+
+
+class CreateAvailabilityRequest(BaseModel):
+    day_of_week: int
+    start_time: str
+    end_time: str
+    slot_duration_minutes: int = 60
+
+
+class UpdateAvailabilityRequest(BaseModel):
+    day_of_week: Optional[int] = None
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    slot_duration_minutes: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class AvailabilityResponse(BaseModel):
+    id: int
+    psychologist_id: int
+    day_of_week: int
+    start_time: str
+    end_time: str
+    slot_duration_minutes: int
+    is_active: bool
+    created_at: str
+    updated_at: str
+
+
+class AvailableSlotItem(BaseModel):
+    time: str
+    available: bool
+
+
+class AvailableSlotsResponse(BaseModel):
+    psychologist_id: int
+    date: str
+    slots: list[AvailableSlotItem]
+
 
 
 
@@ -611,6 +693,11 @@ def login(request: Request, user: LoginRequest):
     if user.email:
         email_clean = turkish_lower(user.email.strip())
         db_user = get_user_by_email(email_clean)
+        # Consistent username or email support: fallback to check username if email lookup fails
+        if not db_user:
+            db_user = get_user_by_username(email_clean)
+            if db_user:
+                email_clean = db_user["email"] or "anonymous"
     elif user.username:
         username_clean = turkish_lower(user.username.strip())
         db_user = get_user_by_username(username_clean)
@@ -722,6 +809,188 @@ def logout(credentials: HTTPAuthorizationCredentials = Depends(security_jwt), us
     logger.info(f"Logout event for user: {username}")
     return {"status": "ok", "message": "Başarıyla çıkış yapıldı."}
 
+@app.post("/auth/password-reset/request")
+def password_reset_request(body: PasswordResetRequest):
+    import random
+    from datetime import datetime, timezone, timedelta
+    from src.services.database import SessionLocal, get_user_by_email, PasswordResetCode
+    from src.services.email import send_reset_email
+    
+    email_clean = turkish_lower(body.email.strip())
+    if not email_clean or "@" not in email_clean:
+        raise HTTPException(status_code=400, detail="Geçersiz e-posta formatı.")
+        
+    # Cooldown check: 60 seconds resend limit for the same email
+    db = SessionLocal()
+    try:
+        latest_code = db.query(PasswordResetCode).filter(
+            PasswordResetCode.email == email_clean
+        ).order_by(PasswordResetCode.created_at.desc()).first()
+        
+        if latest_code:
+            now = datetime.now(timezone.utc)
+            created_at = latest_code.created_at
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
+            if (now - created_at) < timedelta(seconds=60):
+                raise HTTPException(status_code=429, detail="Yeni kod istemeden önce lütfen 60 saniye bekleyin.")
+                
+        # Check if user exists
+        user = get_user_by_email(email_clean)
+        if user:
+            # Generate 6-digit verification code
+            code = f"{random.randint(100000, 999999)}"
+            
+            # Invalidate any old unused codes for this email
+            db.query(PasswordResetCode).filter(
+                PasswordResetCode.email == email_clean,
+                PasswordResetCode.used == False
+            ).update({PasswordResetCode.used: True}, synchronize_session=False)
+            
+            # Save new reset code
+            expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+            reset_code = PasswordResetCode(
+                user_id=user["id"],
+                email=email_clean,
+                verification_code=code,
+                expires_at=expires_at,
+                used=False,
+                created_at=datetime.now(timezone.utc),
+                failed_attempts=0
+            )
+            db.add(reset_code)
+            db.commit()
+            
+            # Send email
+            send_reset_email(email_clean, code)
+            
+        return {"message": "Şifre sıfırlama kodu gönderildi."}
+    finally:
+        db.close()
+
+@app.post("/auth/password-reset/verify", response_model=PasswordResetVerifyResponse)
+def password_reset_verify(body: PasswordResetVerifyRequest):
+    from datetime import datetime, timezone, timedelta
+    from src.services.database import SessionLocal, PasswordResetCode
+    from jose import jwt
+    from src.services.auth import SECRET_KEY, ALGORITHM
+    
+    email_clean = turkish_lower(body.email.strip())
+    code_clean = body.code.strip()
+    
+    db = SessionLocal()
+    try:
+        # Find the latest unused code for this email
+        code_record = db.query(PasswordResetCode).filter(
+            PasswordResetCode.email == email_clean,
+            PasswordResetCode.used == False
+        ).order_by(PasswordResetCode.created_at.desc()).first()
+        
+        # Generic error message to prevent account existence exposure
+        generic_error = "Geçersiz e-posta veya doğrulama kodu."
+        
+        if not code_record:
+            raise HTTPException(status_code=400, detail=generic_error)
+            
+        # Check failed attempts count
+        if code_record.failed_attempts >= 3:
+            raise HTTPException(status_code=400, detail=generic_error)
+            
+        # Check expiration
+        now = datetime.now(timezone.utc)
+        expires_at = code_record.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+            
+        if now > expires_at:
+            raise HTTPException(status_code=400, detail=generic_error)
+            
+        # Check verification code matching
+        if code_record.verification_code != code_clean:
+            code_record.failed_attempts += 1
+            if code_record.failed_attempts >= 3:
+                code_record.used = True
+            db.commit()
+            raise HTTPException(status_code=400, detail=generic_error)
+            
+        # Generate temporary reset token valid for 10 minutes
+        import uuid
+        token_data = {
+            "sub": email_clean,
+            "purpose": "password_reset",
+            "code_id": code_record.id,
+            "jti": str(uuid.uuid4()),
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=10)
+        }
+        reset_token = jwt.encode(token_data, SECRET_KEY, algorithm=ALGORITHM)
+        return {"reset_token": reset_token}
+    finally:
+        db.close()
+
+@app.post("/auth/password-reset/complete")
+def password_reset_complete(body: PasswordResetCompleteRequest):
+    from datetime import datetime, timezone
+    from jose import jwt, JWTError
+    from src.services.auth import SECRET_KEY, ALGORITHM, get_password_hash
+    from src.services.database import SessionLocal, PasswordResetCode, User
+    from src.core.token_blacklist import token_blacklist_core
+    
+    # 1. Check blacklist first
+    if token_blacklist_core.is_blacklisted(body.reset_token):
+        raise HTTPException(status_code=400, detail="Geçersiz veya süresi dolmuş şifre sıfırlama token'ı.")
+        
+    # 2. Decode and validate reset token
+    try:
+        payload = jwt.decode(body.reset_token, SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError:
+        raise HTTPException(status_code=400, detail="Geçersiz veya süresi dolmuş şifre sıfırlama token'ı.")
+        
+    if payload.get("purpose") != "password_reset":
+        raise HTTPException(status_code=400, detail="Geçersiz veya süresi dolmuş şifre sıfırlama token'ı.")
+        
+    email = payload.get("sub")
+    code_id = payload.get("code_id")
+    if not email or not code_id:
+        raise HTTPException(status_code=400, detail="Geçersiz veya süresi dolmuş şifre sıfırlama token'ı.")
+        
+    db = SessionLocal()
+    try:
+        # Check if the code has already been used/invalidated
+        code_record = db.query(PasswordResetCode).filter(
+            PasswordResetCode.id == code_id,
+            PasswordResetCode.used == False
+        ).first()
+        
+        if not code_record:
+            raise HTTPException(status_code=400, detail="Geçersiz veya süresi dolmuş şifre sıfırlama token'ı.")
+            
+        # Get user
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            raise HTTPException(status_code=400, detail="Kullanıcı bulunamadı.")
+            
+        # Hash new password and update user
+        user.password_hash = get_password_hash(body.new_password)
+        
+        # Mark reset code as used
+        code_record.used = True
+        
+        # Invalidate all other unused old reset codes for that email
+        db.query(PasswordResetCode).filter(
+            PasswordResetCode.email == email,
+            PasswordResetCode.used == False
+        ).update({PasswordResetCode.used: True}, synchronize_session=False)
+        
+        db.commit()
+        
+        # Blacklist the reset token so it cannot be reused
+        exp = payload.get("exp")
+        token_blacklist_core.add(body.reset_token, expires_at=exp)
+        
+        return {"message": "Şifreniz başarıyla sıfırlandı."}
+    finally:
+        db.close()
+
 @app.post("/predict", response_model=ChatResponse)
 @limiter.limit(security_config.RATE_LIMIT_PREDICT)
 async def predict(request: Request, body: ChatRequest, background_tasks: BackgroundTasks, username: str = Depends(get_current_user)):
@@ -828,7 +1097,13 @@ async def predict(request: Request, body: ChatRequest, background_tasks: Backgro
         emotion=emotion_label,
         risk=risk_label,
         response=chatgpt_response,
-        emergency_contact=emergency_msg
+        emergency_contact=emergency_msg,
+        is_crisis=engine_output.metadata.get("is_crisis", False),
+        crisis_level=engine_output.metadata.get("crisis_level", "none"),
+        show_emergency_support=engine_output.metadata.get("show_emergency_support", False),
+        emergency_phone=engine_output.metadata.get("emergency_phone"),
+        emergency_title=engine_output.metadata.get("emergency_title"),
+        emergency_message=engine_output.metadata.get("emergency_message")
     )
 
 @app.get("/history")
@@ -1738,6 +2013,176 @@ def approve_psychologist_endpoint(username: str, admin_user: str = Depends(verif
         logger.error(f"Error in approve_psychologist_endpoint: {e}")
         raise HTTPException(status_code=500, detail="Onay işlemi sırasında sunucu hatası oluştu.")
 
+@app.get("/admin/psychologists/pending", response_model=list[AdminPsychologistListItem])
+def get_pending_psychologists_endpoint(admin_user: str = Depends(verify_admin)):
+    from src.services.database import get_pending_psychologists
+    try:
+        return get_pending_psychologists()
+    except Exception as e:
+        logger.error(f"Error in get_pending_psychologists_endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Bekleyen psikolog listesi alınamadı.")
+
+@app.post("/admin/psychologists/{username}/reject")
+def reject_psychologist_endpoint(username: str, admin_user: str = Depends(verify_admin)):
+    from src.services.database import reject_psychologist
+    try:
+        success = reject_psychologist(username)
+        if not success:
+            raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı veya psikolog profiline sahip değil.")
+        logger.info(f"ADMIN | Psikolog reddedildi: {username} | Reddeden: {admin_user}")
+        return {"status": "success", "message": f"Kullanıcı '{username}' psikolog başvurusu reddedildi."}
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error in reject_psychologist_endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Reddetme işlemi sırasında sunucu hatası oluştu.")
+
+@app.get("/admin/psychologists/all", response_model=list[AdminPsychologistListItem])
+def get_all_psychologists_endpoint(admin_user: str = Depends(verify_admin)):
+    from src.services.database import get_all_psychologists
+    try:
+        return get_all_psychologists()
+    except Exception as e:
+        logger.error(f"Error in get_all_psychologists_endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Tüm psikolog listesi alınamadı.")
+
+
+@app.get("/psychologists/me/availability", response_model=list[AvailabilityResponse])
+def get_my_availability_endpoint(psy_user: dict = Depends(require_psychologist_user)):
+    from src.services.database import get_psychologist_availabilities_db
+    try:
+        return get_psychologist_availabilities_db(psy_user["id"])
+    except Exception as e:
+        logger.error(f"Error in get_my_availability_endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Müsaitlik listesi alınamadı.")
+
+@app.post("/psychologists/me/availability", response_model=AvailabilityResponse, status_code=201)
+def create_availability_endpoint(body: CreateAvailabilityRequest, psy_user: dict = Depends(require_psychologist_user)):
+    from src.services.database import create_psychologist_availability_db
+    try:
+        return create_psychologist_availability_db(
+            psychologist_id=psy_user["id"],
+            day_of_week=body.day_of_week,
+            start_time=body.start_time,
+            end_time=body.end_time,
+            slot_duration_minutes=body.slot_duration_minutes
+        )
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Error in create_availability_endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Müsaitlik kaydı oluşturulamadı.")
+
+@app.put("/psychologists/me/availability/{availability_id}", response_model=AvailabilityResponse)
+def update_availability_endpoint(availability_id: int, body: UpdateAvailabilityRequest, psy_user: dict = Depends(require_psychologist_user)):
+    from src.services.database import update_psychologist_availability_db
+    try:
+        return update_psychologist_availability_db(
+            psychologist_id=psy_user["id"],
+            availability_id=availability_id,
+            day_of_week=body.day_of_week,
+            start_time=body.start_time,
+            end_time=body.end_time,
+            slot_duration_minutes=body.slot_duration_minutes,
+            is_active=body.is_active
+        )
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Error in update_availability_endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Müsaitlik kaydı güncellenemedi.")
+
+@app.delete("/psychologists/me/availability/{availability_id}")
+def delete_availability_endpoint(availability_id: int, psy_user: dict = Depends(require_psychologist_user)):
+    from src.services.database import delete_psychologist_availability_db
+    try:
+        success = delete_psychologist_availability_db(psy_user["id"], availability_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Müsaitlik kaydı bulunamadı veya silme yetkiniz yok.")
+        return {"status": "success", "message": "Müsaitlik kaydı başarıyla silindi."}
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Error in delete_availability_endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Müsaitlik kaydı silinemedi.")
+
+@app.get("/psychologists/{psychologist_id}/available-slots", response_model=AvailableSlotsResponse)
+def get_available_slots_endpoint(psychologist_id: int, date: str, username: str = Depends(get_current_user)):
+    from src.services.database import SessionLocal, PsychologistProfile, PsychologistAvailability, Appointment
+    from src.services.intervention_scheduler import ISTANBUL_TZ
+    
+    db = SessionLocal()
+    try:
+        profile = db.query(PsychologistProfile).filter(
+            PsychologistProfile.user_id == psychologist_id
+        ).first()
+        if not profile or profile.status != "approved":
+            return {"psychologist_id": psychologist_id, "date": date, "slots": []}
+            
+        try:
+            dt = datetime.strptime(date, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Geçersiz tarih formatı. YYYY-MM-DD olmalıdır.")
+            
+        day_of_week = dt.weekday()
+        
+        now_local = datetime.now(ISTANBUL_TZ)
+        current_date_str = now_local.strftime("%Y-%m-%d")
+        
+        if date < current_date_str:
+            return {"psychologist_id": psychologist_id, "date": date, "slots": []}
+            
+        availabilities = db.query(PsychologistAvailability).filter(
+            PsychologistAvailability.psychologist_id == psychologist_id,
+            PsychologistAvailability.day_of_week == day_of_week,
+            PsychologistAvailability.is_active == True
+        ).all()
+        
+        booked = db.query(Appointment).filter(
+            Appointment.psychologist_id == psychologist_id,
+            Appointment.appointment_date == date,
+            Appointment.status == "scheduled"
+        ).all()
+        booked_times = {appt.appointment_time for appt in booked}
+        
+        slots_output = []
+        current_time_str = now_local.strftime("%H:%M") if date == current_date_str else ""
+        
+        for av in availabilities:
+            def parse_t(t):
+                h, m = map(int, t.split(":"))
+                return h * 60 + m
+            s_min = parse_t(av.start_time)
+            e_min = parse_t(av.end_time)
+            
+            current = s_min
+            while current + av.slot_duration_minutes <= e_min:
+                h = current // 60
+                m = current % 60
+                slot_time = f"{h:02d}:{m:02d}"
+                
+                is_available = slot_time not in booked_times
+                if date == current_date_str and slot_time <= current_time_str:
+                    is_available = False
+                    
+                if is_available:
+                    slots_output.append({
+                        "time": slot_time,
+                        "available": True
+                    })
+                    
+                current += av.slot_duration_minutes
+                
+        slots_output.sort(key=lambda x: x["time"])
+        return {
+            "psychologist_id": psychologist_id,
+            "date": date,
+            "slots": slots_output
+        }
+    finally:
+        db.close()
+
+
 @app.post("/appointments", response_model=AppointmentResponse, status_code=201)
 def create_appointment_endpoint(body: CreateAppointmentRequest, username: str = Depends(get_current_user)):
     from src.services.database import create_appointment, get_user_by_username
@@ -1969,6 +2414,12 @@ async def websocket_chat_endpoint(ws: WebSocket, token: Optional[str] = None):
                     risk=response_data.get("risk", "low"),
                     response_text=response_data.get("response", ""),
                     emergency_contact=response_data.get("emergency_contact"),
+                    is_crisis=response_data.get("is_crisis"),
+                    crisis_level=response_data.get("crisis_level"),
+                    show_emergency_support=response_data.get("show_emergency_support"),
+                    emergency_phone=response_data.get("emergency_phone"),
+                    emergency_title=response_data.get("emergency_title"),
+                    emergency_message=response_data.get("emergency_message"),
                 )
 
                 # Typing indicator kapat
@@ -2087,6 +2538,12 @@ def _sync_process_message(user_id: str, text: str, lang: str) -> dict:
             "risk": risk_label,
             "response": chatgpt_response,
             "emergency_contact": emergency_msg,
+            "is_crisis": engine_output.metadata.get("is_crisis", False),
+            "crisis_level": engine_output.metadata.get("crisis_level", "none"),
+            "show_emergency_support": engine_output.metadata.get("show_emergency_support", False),
+            "emergency_phone": engine_output.metadata.get("emergency_phone"),
+            "emergency_title": engine_output.metadata.get("emergency_title"),
+            "emergency_message": engine_output.metadata.get("emergency_message"),
         }
     except Exception as exc:
         logger.exception("WS inference hatası")

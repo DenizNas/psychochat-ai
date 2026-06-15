@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.psikochat.app.data.local.TokenManager
 import com.psikochat.app.data.model.HistoryItem
 import com.psikochat.app.data.model.Resource
+import com.psikochat.app.data.model.ChatResponse
 import com.psikochat.app.data.realtime.ConnectionState
 import com.psikochat.app.data.realtime.RealtimeWebSocketManager
 import com.psikochat.app.data.realtime.WsEvent
@@ -58,6 +59,9 @@ class ChatViewModel(
     /** Assistant'ın şu an yazdığını gösterir (WebSocket typing indicator). */
     private val _isAssistantTyping = MutableStateFlow(false)
     val isAssistantTyping: StateFlow<Boolean> = _isAssistantTyping
+
+    private val _activeEmergencySupport = MutableStateFlow<ChatResponse?>(null)
+    val activeEmergencySupport: StateFlow<ChatResponse?> = _activeEmergencySupport.asStateFlow()
 
     /** WebSocket bağlantı durumu (UI banner için). */
     val connectionState: StateFlow<ConnectionState> = wsManager.connectionState
@@ -177,8 +181,24 @@ class ChatViewModel(
             _isAssistantTyping.value = false
         }
 
-        if (!event.emergencyContact.isNullOrBlank()) {
-            _crisisAlert.value = event.emergencyContact
+        if (event.showEmergencySupport == true) {
+            _activeEmergencySupport.value = ChatResponse(
+                emotion = event.emotion,
+                risk = event.risk,
+                response = event.response,
+                emergencyContact = event.emergencyContact,
+                isCrisis = event.isCrisis,
+                crisisLevel = event.crisisLevel,
+                showEmergencySupport = event.showEmergencySupport,
+                emergencyPhone = event.emergencyPhone,
+                emergencyTitle = event.emergencyTitle,
+                emergencyMessage = event.emergencyMessage
+            )
+        } else {
+            _activeEmergencySupport.value = null
+            if (!event.emergencyContact.isNullOrBlank()) {
+                _crisisAlert.value = event.emergencyContact
+            }
         }
     }
 
@@ -225,6 +245,8 @@ class ChatViewModel(
             return
         }
         if (_isLoading.value) return
+
+        _activeEmergencySupport.value = null
 
         val currentTime = System.currentTimeMillis()
         if (currentTime - lastSendTime < 1000) return // 1 sn throttle
@@ -303,7 +325,18 @@ class ChatViewModel(
                     conversationId = activeId
                 )
                 when (res) {
-                    is Resource.Success -> Log.d("ChatViewModel", "RESILIENT | success | localId=${localId?.take(8)}")
+                    is Resource.Success -> {
+                        Log.d("ChatViewModel", "RESILIENT | success | localId=${localId?.take(8)}")
+                        val chatResponse = res.data
+                        if (chatResponse != null && chatResponse.showEmergencySupport == true) {
+                            _activeEmergencySupport.value = chatResponse
+                        } else {
+                            _activeEmergencySupport.value = null
+                            if (chatResponse != null && !chatResponse.emergencyContact.isNullOrBlank()) {
+                                _crisisAlert.value = chatResponse.emergencyContact
+                            }
+                        }
+                    }
                     is Resource.Error -> {
                         Log.w("ChatViewModel", "RESILIENT | error | ${res.message} | localId=${localId?.take(8)}")
                         _error.value = res.message
@@ -358,6 +391,10 @@ class ChatViewModel(
         _crisisAlert.value = null
     }
 
+    fun clearEmergencySupport() {
+        _activeEmergencySupport.value = null
+    }
+
     private fun parseTimestampToMillis(timestamp: String?): Long {
         if (timestamp.isNullOrBlank()) return 0L
         val formats = listOf(
@@ -377,6 +414,7 @@ class ChatViewModel(
     }
 
     fun startNewChat() {
+        _activeEmergencySupport.value = null
         viewModelScope.launch {
             val username = tokenManager.getUsername().first()
             val newId = UUID.randomUUID().toString()

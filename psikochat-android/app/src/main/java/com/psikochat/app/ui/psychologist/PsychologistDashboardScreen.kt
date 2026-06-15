@@ -52,6 +52,22 @@ fun PsychologistDashboardScreen(navController: NavController, tokenManager: Toke
     val profileViewModel: ProfileViewModel = viewModel(factory = profileFactory)
     val profileState by profileViewModel.profileState.collectAsState()
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val db = com.psikochat.app.data.local.AppDatabase.getInstance(context)
+    val appointmentRepo = remember(api) { com.psikochat.app.data.repository.AppointmentRepository(api, db.appointmentDao(), context) }
+    val appointmentFactory = object : ViewModelProvider.Factory {
+        @Suppress("UNCHECKED_CAST")
+        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+            return com.psikochat.app.ui.home.AppointmentViewModel(appointmentRepo) as T
+        }
+    }
+    val appointmentViewModel: com.psikochat.app.ui.home.AppointmentViewModel = viewModel(factory = appointmentFactory)
+    val fetchState by appointmentViewModel.fetchState.collectAsState()
+
+    LaunchedEffect(Unit) {
+        appointmentViewModel.loadAppointments()
+    }
+
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
@@ -292,40 +308,186 @@ fun PsychologistDashboardScreen(navController: NavController, tokenManager: Toke
                     modifier = Modifier.padding(20.dp),
                     horizontalAlignment = Alignment.Start
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.DateRange,
-                            contentDescription = null,
-                            tint = DarkTealPrimary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Randevularım",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = LoginTextColor
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Box(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                        contentAlignment = Alignment.Center
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 imageVector = Icons.Default.DateRange,
                                 contentDescription = null,
-                                tint = LoginSecondaryText,
-                                modifier = Modifier.size(36.dp)
+                                tint = DarkTealPrimary,
+                                modifier = Modifier.size(20.dp)
                             )
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Yaklaşan randevunuz bulunmamaktadır.",
-                                fontSize = 13.sp,
-                                color = LoginSecondaryText,
-                                textAlign = TextAlign.Center
+                                text = "Randevularım",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = LoginTextColor
                             )
+                        }
+                        IconButton(
+                            onClick = { appointmentViewModel.loadAppointments() },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Yenile",
+                                tint = DarkTealPrimary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    when (val state = fetchState) {
+                        is Resource.Loading -> {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    color = DarkTealPrimary,
+                                    modifier = Modifier.size(24.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            }
+                        }
+                        is Resource.Error -> {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        text = state.message ?: "Randevular yüklenemedi.",
+                                        color = MildAlertText,
+                                        fontSize = 13.sp,
+                                        textAlign = TextAlign.Center
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    TextButton(onClick = { appointmentViewModel.loadAppointments() }) {
+                                        Text("Tekrar Dene", color = DarkTealPrimary)
+                                    }
+                                }
+                            }
+                        }
+                        else -> {
+                            val upcomingAppointments = state?.data?.filter { it.status == "scheduled" } ?: emptyList()
+                            if (upcomingAppointments.isEmpty()) {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Icon(
+                                            imageVector = Icons.Default.DateRange,
+                                            contentDescription = null,
+                                            tint = LoginSecondaryText,
+                                            modifier = Modifier.size(36.dp)
+                                        )
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            text = "Yaklaşan randevunuz bulunmamaktadır.",
+                                            fontSize = 13.sp,
+                                            color = LoginSecondaryText,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
+                            } else {
+                                val sortedAppointments = upcomingAppointments.sortedWith(compareBy({ it.appointmentDate }, { it.appointmentTime }))
+                                val nextUpcoming = sortedAppointments.first()
+                                val upcomingCount = upcomingAppointments.size
+
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Text(
+                                        text = "Toplam $upcomingCount yaklaşan randevunuz var.",
+                                        fontSize = 13.sp,
+                                        color = LoginSecondaryText,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    
+                                    // Preview of the next upcoming appointment
+                                    Surface(
+                                        shape = RoundedCornerShape(16.dp),
+                                        color = SoftMintLight,
+                                        border = BorderStroke(1.dp, SoftMintAccent.copy(alpha = 0.5f)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(modifier = Modifier.padding(14.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = nextUpcoming.patientName ?: "Danışan",
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = LoginTextColor
+                                                )
+                                                Surface(
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = DarkTealPrimary.copy(alpha = 0.1f)
+                                                ) {
+                                                    Text(
+                                                        text = "Sıradaki",
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = DarkTealPrimary,
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                            }
+                                            if (!nextUpcoming.patientEmail.isNullOrBlank()) {
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                Text(
+                                                    text = nextUpcoming.patientEmail,
+                                                    fontSize = 12.sp,
+                                                    color = LoginSecondaryText
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    imageVector = Icons.Default.DateRange,
+                                                    contentDescription = null,
+                                                    tint = DarkTealPrimary,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = "${nextUpcoming.appointmentDate} saat ${nextUpcoming.appointmentTime}",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = DarkTealPrimary
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(16.dp))
+
+                                    Button(
+                                        onClick = { navController.navigate("psychologist_appointments") },
+                                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = DarkTealPrimary,
+                                            contentColor = Color.White
+                                        )
+                                    ) {
+                                        Text(
+                                            text = "Tüm Randevuları Gör",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -335,7 +497,9 @@ fun PsychologistDashboardScreen(navController: NavController, tokenManager: Toke
 
             // 4. Card: Müsaitlik Yönetimi
             Surface(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { navController.navigate("psychologist_availability") },
                 shape = RoundedCornerShape(24.dp),
                 color = PremiumWhiteCard,
                 shadowElevation = 2.dp,
@@ -345,24 +509,35 @@ fun PsychologistDashboardScreen(navController: NavController, tokenManager: Toke
                     modifier = Modifier.padding(20.dp),
                     horizontalAlignment = Alignment.Start
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Build,
+                                contentDescription = null,
+                                tint = DarkTealPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Müsaitlik Yönetimi",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = LoginTextColor
+                            )
+                        }
                         Icon(
-                            imageVector = Icons.Default.Build,
+                            imageVector = Icons.Default.KeyboardArrowRight,
                             contentDescription = null,
-                            tint = DarkTealPrimary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Müsaitlik Yönetimi",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = LoginTextColor
+                            tint = LoginSecondaryText
                         )
                     }
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "Müsait saatlerinizi belirlemek ve düzenlemek için yakında bu alandan erişim sağlayabileceksiniz.",
+                        text = "Çalışma günlerinizi, seans saatlerinizi ve sürelerinizi düzenlemek için tıklayın.",
                         fontSize = 13.sp,
                         color = LoginSecondaryText,
                         lineHeight = 18.sp

@@ -4,6 +4,10 @@ import com.psikochat.app.data.model.LoginRequest
 import com.psikochat.app.data.model.RegisterRequest
 import com.psikochat.app.data.model.AuthResponse
 import com.psikochat.app.data.model.Resource
+import com.psikochat.app.data.model.PasswordResetRequest
+import com.psikochat.app.data.model.PasswordResetVerifyRequest
+import com.psikochat.app.data.model.PasswordResetVerifyResponse
+import com.psikochat.app.data.model.PasswordResetCompleteRequest
 
 import retrofit2.HttpException
 import java.io.IOException
@@ -25,6 +29,33 @@ class AuthRepository(private val api: PsikoApi) {
             Resource.Success(true)
         } catch (e: Exception) {
             parseError(e, "Kayıt başarısız")
+        }
+    }
+
+    suspend fun requestPasswordReset(email: String): Resource<Boolean> {
+        return try {
+            api.requestPasswordReset(PasswordResetRequest(email))
+            Resource.Success(true)
+        } catch (e: Exception) {
+            parseError(e, "Şifre sıfırlama talebi başarısız oldu.")
+        }
+    }
+    
+    suspend fun verifyPasswordResetCode(email: String, code: String): Resource<PasswordResetVerifyResponse> {
+        return try {
+            val res = api.verifyPasswordResetCode(PasswordResetVerifyRequest(email, code))
+            Resource.Success(res)
+        } catch (e: Exception) {
+            parseError(e, "Kod doğrulama başarısız oldu.")
+        }
+    }
+    
+    suspend fun completePasswordReset(resetToken: String, newPass: String): Resource<Boolean> {
+        return try {
+            api.completePasswordReset(PasswordResetCompleteRequest(resetToken, newPass))
+            Resource.Success(true)
+        } catch (e: Exception) {
+            parseError(e, "Şifre güncelleme başarısız oldu.")
         }
     }
 

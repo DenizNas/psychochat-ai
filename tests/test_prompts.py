@@ -23,7 +23,7 @@ print("\n--- Injection guard (first 120 chars) ---")
 print(get_prompt_injection_guard()[:120])
 
 # Normal turn: emotion present, crisis absent
-prompt, meta = build_system_prompt(language="tr", emotion="sadness", risk="Normal")
+prompt, meta = build_system_prompt(language="tr", emotion="sadness", risk="Normal", text="Çok üzgünüm")
 print("\n--- build_system_prompt (normal, sadness) ---")
 print("sections:", meta["prompt_sections"])
 print("length:", meta["prompt_length"])
@@ -47,7 +47,8 @@ assert '"""' in up, "FAIL: delimiter missing"
 
 # Memory injection flows through build_system_prompt
 prompt_m, meta_m = build_system_prompt(
-    emotion="neutral", risk="Normal",
+    emotion="sadness", risk="Normal",
+    text="Çok üzgünüm",
     memory_context="- [coping_strategies] Nefes egzersizi"
 )
 print("\n--- Memory injection in build_system_prompt ---")

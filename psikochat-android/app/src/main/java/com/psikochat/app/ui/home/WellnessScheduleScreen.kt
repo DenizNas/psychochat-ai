@@ -59,7 +59,7 @@ fun WellnessScheduleScreen(navController: NavController, tokenManager: TokenMana
     // Appointment ViewModel Integration
     val context = androidx.compose.ui.platform.LocalContext.current
     val db = com.psikochat.app.data.local.AppDatabase.getInstance(context)
-    val appointmentRepository = com.psikochat.app.data.repository.AppointmentRepository(api, db.appointmentDao())
+    val appointmentRepository = com.psikochat.app.data.repository.AppointmentRepository(api, db.appointmentDao(), context)
     val apptFactory = object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {

@@ -77,16 +77,36 @@ def build_chat_response(
     risk: str,
     response_text: str,
     emergency_contact: Optional[str] = None,
+    is_crisis: Optional[bool] = None,
+    crisis_level: Optional[str] = None,
+    show_emergency_support: Optional[bool] = None,
+    emergency_phone: Optional[str] = None,
+    emergency_title: Optional[str] = None,
+    emergency_message: Optional[str] = None,
 ) -> dict:
     """Server-to-client chat cevabı olayı."""
+    payload = {
+        "emotion": emotion,
+        "risk": risk,
+        "response": response_text,
+        "emergency_contact": emergency_contact,
+    }
+    if is_crisis is not None:
+        payload["is_crisis"] = is_crisis
+    if crisis_level is not None:
+        payload["crisis_level"] = crisis_level
+    if show_emergency_support is not None:
+        payload["show_emergency_support"] = show_emergency_support
+    if emergency_phone is not None:
+        payload["emergency_phone"] = emergency_phone
+    if emergency_title is not None:
+        payload["emergency_title"] = emergency_title
+    if emergency_message is not None:
+        payload["emergency_message"] = emergency_message
+        
     return {
         "type": WsEventType.CHAT_RESPONSE,
-        "payload": {
-            "emotion": emotion,
-            "risk": risk,
-            "response": response_text,
-            "emergency_contact": emergency_contact,
-        },
+        "payload": payload,
     }
 
 

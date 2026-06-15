@@ -69,6 +69,8 @@ fun SettingsScreen(navController: NavController, tokenManager: TokenManager) {
         }
     }
 
+    val userRole by tokenManager.getRole().collectAsState(initial = "user")
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -161,6 +163,7 @@ fun SettingsScreen(navController: NavController, tokenManager: TokenManager) {
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Spacer(modifier = Modifier.height(24.dp))
+
 
                         // Uygulama Ayarları Grubu
                         Surface(
@@ -298,6 +301,25 @@ fun SettingsScreen(navController: NavController, tokenManager: TokenManager) {
                                     Icon(Icons.Default.ExitToApp, contentDescription = null, tint = Color.Red)
                                     Spacer(modifier = Modifier.width(16.dp))
                                     Text("Oturumu Kapat", color = Color.Red, fontWeight = FontWeight.Medium)
+                                }
+                            }
+                        }
+                        
+                        if (userRole == "admin") {
+                            Spacer(modifier = Modifier.height(24.dp))
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(24.dp),
+                                color = PremiumWhiteCard
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Text("Admin İşlemleri", fontWeight = FontWeight.Bold, color = LoginTextColor, modifier = Modifier.padding(bottom = 8.dp))
+                                    
+                                    SettingClickItem(
+                                        Icons.Default.Build, 
+                                        "Psikolog Başvuruları", 
+                                        null
+                                    ) { navController.navigate("admin_psychologists") }
                                 }
                             }
                         }

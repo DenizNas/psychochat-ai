@@ -24,11 +24,56 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.psikochat.app.ui.theme.*
+import android.util.Log
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import com.psikochat.app.R
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.psikochat.app.data.api.RetrofitClient
+import com.psikochat.app.data.local.TokenManager
+import com.psikochat.app.data.model.Resource
+import com.psikochat.app.data.repository.AuthRepository
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ForgotPasswordScreen(navController: NavController) {
+fun ForgotPasswordScreen(navController: NavController, tokenManager: TokenManager) {
+    val api = RetrofitClient.create(tokenManager)
+    val repo = AuthRepository(api)
+    val factory = object : ViewModelProvider.Factory {
+        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+            return AuthViewModel(repo, tokenManager) as T
+        }
+    }
+    val viewModel: AuthViewModel = viewModel(factory = factory)
+
     var emailOrPhone by remember { mutableStateOf("") }
+    var validationError by remember { mutableStateOf<String?>(null) }
+    val resetRequestState by viewModel.resetRequestState.collectAsState()
+
+    LaunchedEffect(resetRequestState) {
+        when (resetRequestState) {
+            is Resource.Success -> {
+                if (resetRequestState.data == true) {
+                    Log.d("ForgotPasswordScreen", "PASSWORD_RESET_REQUEST_SUCCESS")
+                    val encodedEmail = java.net.URLEncoder.encode(emailOrPhone.trim(), "UTF-8")
+                    navController.navigate("verification_code/$encodedEmail")
+                }
+            }
+            is Resource.Error -> {
+                Log.e("ForgotPasswordScreen", "PASSWORD_RESET_REQUEST_ERROR")
+            }
+            else -> {}
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            viewModel.resetResetStates()
+        }
+    }
+
     val scrollState = rememberScrollState()
 
     Scaffold(
@@ -39,11 +84,13 @@ fun ForgotPasswordScreen(navController: NavController) {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Favorite,
+                        Image(
+                            painter = painterResource(id = R.drawable.ic_logo),
                             contentDescription = null,
-                            modifier = Modifier.size(20.dp),
-                            tint = DarkTealPrimary
+                            modifier = Modifier
+                                .size(20.dp)
+                                .clip(CircleShape),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
@@ -82,20 +129,12 @@ fun ForgotPasswordScreen(navController: NavController) {
             Spacer(modifier = Modifier.height(28.dp))
 
             // Premium Brand Emblem
-            Box(
-                modifier = Modifier
-                    .size(96.dp)
-                    .clip(CircleShape)
-                    .background(SoftMintAccent),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Favorite,
-                    contentDescription = null,
-                    modifier = Modifier.size(48.dp),
-                    tint = DarkTealPrimary
-                )
-            }
+            Image(
+                painter = painterResource(id = R.drawable.ic_logo),
+                contentDescription = null,
+                modifier = Modifier.size(120.dp),
+                contentScale = androidx.compose.ui.layout.ContentScale.Fit
+            )
 
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -112,7 +151,7 @@ fun ForgotPasswordScreen(navController: NavController) {
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Kişisel Zihinsel Wellness Asistanınız",
+                text = "Kişisel Zihinsel Asistanınız",
                 style = MaterialTheme.typography.bodyLarge.copy(
                     fontWeight = FontWeight.Medium,
                     lineHeight = 22.sp,
@@ -172,26 +211,60 @@ fun ForgotPasswordScreen(navController: NavController) {
                         singleLine = true
                     )
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    val displayError = validationError ?: (if (resetRequestState is Resource.Error) (resetRequestState as Resource.Error).message else null)
+                    if (displayError != null) {
+                        Text(
+                            text = displayError,
+                            color = MildAlertText,
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
 
                     Button(
-                        onClick = { /* Handle send code */ },
+                        onClick = {
+                            validationError = null
+                            val emailTrimmed = emailOrPhone.trim()
+                            Log.d("ForgotPasswordScreen", "FORGOT_PASSWORD_CLICKED")
+                            if (emailTrimmed.isBlank()) {
+                                validationError = "Lütfen e-posta adresinizi giriniz."
+                            } else if (!emailTrimmed.contains("@") || emailTrimmed.length < 5) {
+                                validationError = "Geçersiz e-posta formatı."
+                            } else {
+                                Log.d("ForgotPasswordScreen", "PASSWORD_RESET_REQUEST_STARTED")
+                                viewModel.requestPasswordReset(emailTrimmed)
+                            }
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(56.dp),
                         shape = RoundedCornerShape(16.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = DarkTealPrimary,
-                            contentColor = Color.White
-                        )
+                            contentColor = Color.White,
+                            disabledContainerColor = DarkTealPrimary.copy(alpha = 0.6f)
+                        ),
+                        enabled = resetRequestState !is Resource.Loading
                     ) {
-                        Text(
-                            "KOD GÖNDER",
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
-                            letterSpacing = 1.sp
-                        )
+                        if (resetRequestState is Resource.Loading) {
+                            CircularProgressIndicator(
+                                color = Color.White,
+                                modifier = Modifier.size(24.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Text(
+                                "KOD GÖNDER",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                letterSpacing = 1.sp
+                            )
+                        }
                     }
                 }
             }

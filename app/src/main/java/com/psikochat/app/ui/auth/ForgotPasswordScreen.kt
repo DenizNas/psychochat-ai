@@ -18,13 +18,44 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import com.psikochat.app.data.api.RetrofitClient
+import com.psikochat.app.data.local.TokenManager
+import com.psikochat.app.data.model.Resource
+import com.psikochat.app.data.repository.AuthRepository
 import com.psikochat.app.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ForgotPasswordScreen(navController: NavController) {
-    var emailOrPhone by remember { mutableStateOf("") }
+fun ForgotPasswordScreen(navController: NavController, tokenManager: TokenManager) {
+    val api = RetrofitClient.create(tokenManager)
+    val repo = AuthRepository(api)
+    val factory = object : ViewModelProvider.Factory {
+        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+            return AuthViewModel(repo, tokenManager) as T
+        }
+    }
+    val viewModel: AuthViewModel = viewModel(factory = factory)
+
+    var email by remember { mutableStateOf("") }
+    var validationError by remember { mutableStateOf<String?>(null) }
+    val resetRequestState by viewModel.resetRequestState.collectAsState()
+
+    LaunchedEffect(resetRequestState) {
+        if (resetRequestState is Resource.Success && (resetRequestState.data == true)) {
+            val encodedEmail = java.net.URLEncoder.encode(email.trim(), "UTF-8")
+            navController.navigate("verification_code/$encodedEmail")
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            viewModel.resetResetStates()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -115,7 +146,7 @@ fun ForgotPasswordScreen(navController: NavController) {
                 Spacer(modifier = Modifier.width(16.dp))
                 Column {
                     Text(
-                        text = "Merhaba, Elif!",
+                        text = "Merhaba!",
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                         color = LoginTextColor
                     )
@@ -161,7 +192,7 @@ fun ForgotPasswordScreen(navController: NavController) {
                     Spacer(modifier = Modifier.height(16.dp))
                     
                     Text(
-                        text = "Hemen şifreni yenilemek için kayıtlı e-posta adresini veya telefon numaranı gir. Sana bir doğrulama kodu göndereceğiz.",
+                        text = "Hemen şifreni yenilemek için kayıtlı e-posta adresini gir. Sana bir doğrulama kodu göndereceğiz.",
                         textAlign = TextAlign.Center,
                         fontSize = 14.sp,
                         color = LoginTextColor,
@@ -171,14 +202,13 @@ fun ForgotPasswordScreen(navController: NavController) {
                     Spacer(modifier = Modifier.height(24.dp))
 
                     OutlinedTextField(
-                        value = emailOrPhone,
-                        onValueChange = { emailOrPhone = it },
-                        placeholder = { Text("E-posta veya Telefon Numarası", color = Color.Gray, fontSize = 14.sp) },
+                        value = email,
+                        onValueChange = { email = it },
+                        placeholder = { Text("E-posta Adresiniz", color = Color.Gray, fontSize = 14.sp) },
                         textStyle = TextStyle(color = LoginTextColor),
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
                         leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = Color.Gray) },
-                        trailingIcon = { Icon(Icons.Default.Call, contentDescription = null, tint = Color.Gray) },
                         colors = OutlinedTextFieldDefaults.colors(
                             unfocusedBorderColor = LoginButton.copy(alpha = 0.5f),
                             focusedBorderColor = LoginButton
@@ -186,17 +216,47 @@ fun ForgotPasswordScreen(navController: NavController) {
                         singleLine = true
                     )
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    val displayError = validationError ?: (if (resetRequestState is Resource.Error) (resetRequestState as Resource.Error).message else null)
+                    if (displayError != null) {
+                        Text(
+                            text = displayError,
+                            color = Color.Red,
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
 
                     Button(
-                        onClick = { /* Handle send code */ },
+                        onClick = {
+                            validationError = null
+                            val emailTrimmed = email.trim()
+                            if (emailTrimmed.isBlank()) {
+                                validationError = "Lütfen e-posta adresinizi giriniz."
+                            } else if (!emailTrimmed.contains("@") || emailTrimmed.length < 5) {
+                                validationError = "Geçersiz e-posta formatı."
+                            } else {
+                                viewModel.requestPasswordReset(emailTrimmed)
+                            }
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(56.dp),
                         shape = RoundedCornerShape(28.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = LoginButton)
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = LoginButton,
+                            disabledContainerColor = LoginButton.copy(alpha = 0.6f)
+                        ),
+                        enabled = resetRequestState !is Resource.Loading
                     ) {
-                        Text("Doğrulama Kodu Gönder", color = Color.White, fontWeight = FontWeight.Bold)
+                        if (resetRequestState is Resource.Loading) {
+                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                        } else {
+                            Text("Doğrulama Kodu Gönder", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(24.dp))

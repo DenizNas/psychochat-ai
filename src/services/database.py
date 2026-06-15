@@ -88,6 +88,23 @@ class PsychologistProfile(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
+class PsychologistAvailability(Base):
+    __tablename__ = "psychologist_availability"
+    id = Column(Integer, primary_key=True, index=True)
+    psychologist_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    day_of_week = Column(Integer, nullable=False) # 0-6 (0=Monday, 6=Sunday)
+    start_time = Column(String, nullable=False) # "HH:MM"
+    end_time = Column(String, nullable=False) # "HH:MM"
+    slot_duration_minutes = Column(Integer, default=60, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    blocked_dates = Column(String, nullable=True) # comma-separated list of YYYY-MM-DD
+    custom_exceptions = Column(String, nullable=True) # custom JSON format configuration
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    psychologist = relationship("User", foreign_keys=[psychologist_id])
+
+
 class Appointment(Base):
     __tablename__ = "appointments"
     id = Column(Integer, primary_key=True, index=True)
@@ -146,6 +163,17 @@ class UserMemory(Base):
     decay_score = Column(Float, default=1.0, nullable=True)          # 1.0=fresh
     is_active = Column(Boolean, default=True, nullable=True)         # soft-delete
 
+class PasswordResetCode(Base):
+    __tablename__ = "password_reset_codes"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    email = Column(String, index=True, nullable=False)
+    verification_code = Column(String, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    failed_attempts = Column(Integer, default=0, nullable=False)
+
 def init_db(retries: int = 5, delay: int = 5):
     """
     Veritabanı bağlantısını ve tabloları başlatır.
@@ -159,7 +187,10 @@ def init_db(retries: int = 5, delay: int = 5):
             migrate_users_schema()  # Faz 10 P4: add role column if missing
             migrate_users_schema_phase2a() # Phase 2A: add email and full_name columns if missing
             migrate_recommendation_schema()  # Faz 10 P7: recommendation_events table
+            migrate_password_reset_codes_schema()  # Phase 11.0A: password_reset_codes table
             seed_plans()  # Seed default plans
+            seed_admin()  # Seed default admin user
+            seed_test_user()  # Seed default test user denizdennasnas@gmail.com
             return
         except OperationalError as e:
             print(f"Warning: DB connection failed on attempt {attempt}/{retries}: {e}")
@@ -345,6 +376,22 @@ def migrate_recommendation_schema() -> None:
             logger.debug("MIGRATE | Table 'recommendation_events' already exists — skipped")
     except Exception as migrate_err:
         logger.warning("MIGRATE | recommendation_events schema migration skipped: %s", migrate_err)
+
+
+def migrate_password_reset_codes_schema() -> None:
+    """
+    Migration-safe table creation for password_reset_codes.
+    """
+    try:
+        from sqlalchemy import inspect as sa_inspect
+        inspector = sa_inspect(engine)
+        if "password_reset_codes" not in inspector.get_table_names():
+            PasswordResetCode.__table__.create(bind=engine, checkfirst=True)
+            logger.info("MIGRATE | Created table 'password_reset_codes'")
+        else:
+            logger.debug("MIGRATE | Table 'password_reset_codes' already exists — skipped")
+    except Exception as migrate_err:
+        logger.warning("MIGRATE | password_reset_codes schema migration failed: %s", migrate_err)
 
 
 def create_user(username: str, password_hash: str, email: Optional[str] = None, full_name: Optional[str] = None, role: str = "user") -> bool:
@@ -1561,6 +1608,7 @@ def get_approved_psychologists():
         output = []
         for user, profile in results:
             output.append({
+                "id": user.id,
                 "username": user.username,
                 "email": user.email,
                 "full_name": user.full_name,
@@ -1613,6 +1661,64 @@ def create_appointment(username: str, psychologist_username: str, date_str: str,
         profile = db.query(PsychologistProfile).filter(PsychologistProfile.user_id == psy.id).first()
         if not profile or profile.status != "approved":
             raise ValueError("Psikolog henüz onaylanmamış.")
+        
+        # 1. Past date/time check (Istanbul/Turkey timezone safe)
+        from src.services.intervention_scheduler import ISTANBUL_TZ
+        now_local = datetime.now(ISTANBUL_TZ)
+        current_date_str = now_local.strftime("%Y-%m-%d")
+        if date_str < current_date_str:
+            raise ValueError("Geçmiş bir tarihe randevu alınamaz.")
+        if date_str == current_date_str:
+            current_time_str = now_local.strftime("%H:%M")
+            if time_str <= current_time_str:
+                raise ValueError("Geçmiş bir saate randevu alınamaz.")
+                
+        # 2. Weekday matching
+        try:
+            dt = datetime.strptime(date_str, "%Y-%m-%d")
+        except ValueError:
+            raise ValueError("Geçersiz tarih formatı. YYYY-MM-DD olmalıdır.")
+        day_of_week = dt.weekday() # 0-6 (0=Monday, 6=Sunday)
+        
+        # 3. Retrieve active availabilities for the psychologist on this day
+        availabilities = db.query(PsychologistAvailability).filter(
+            PsychologistAvailability.psychologist_id == psy.id,
+            PsychologistAvailability.day_of_week == day_of_week,
+            PsychologistAvailability.is_active == True
+        ).all()
+        
+        matched = False
+        for av in availabilities:
+            def parse_t(t):
+                h, m = map(int, t.split(":"))
+                return h * 60 + m
+            s_min = parse_t(av.start_time)
+            e_min = parse_t(av.end_time)
+            req_min = parse_t(time_str)
+            
+            # Generate valid slot start times
+            slots = []
+            current = s_min
+            while current + av.slot_duration_minutes <= e_min:
+                slots.append(current)
+                current += av.slot_duration_minutes
+                
+            if req_min in slots:
+                matched = True
+                break
+                
+        if not matched:
+            raise ValueError("Seçilen saat uzman psikoloğun müsaitlik saatleri dışındadır.")
+            
+        # 4. Check if slot is already booked (Scheduled status)
+        existing_booking = db.query(Appointment).filter(
+            Appointment.psychologist_id == psy.id,
+            Appointment.appointment_date == date_str,
+            Appointment.appointment_time == time_str,
+            Appointment.status == "scheduled"
+        ).first()
+        if existing_booking:
+            raise ValueError("Bu saat dilimi zaten dolu.")
         
         appt = Appointment(
             user_id=user.id,
@@ -1667,7 +1773,8 @@ def get_appointments_for_user(username: str):
                     "status": appt.status,
                     "created_at": appt.created_at.isoformat() if appt.created_at else None,
                     "patient_name": patient.full_name or patient.username,
-                    "patient_username": patient.username
+                    "patient_username": patient.username,
+                    "patient_email": patient.email
                 })
             return output
         else:
@@ -1728,6 +1835,346 @@ def cancel_appointment_in_db(username: str, appointment_id: int) -> bool:
         return False
     finally:
         db.close()
+
+
+def seed_admin():
+    """Seeds default admin user or updates existing if wrong."""
+    from src.services.auth import get_password_hash, verify_password
+    db = SessionLocal()
+    try:
+        admin_user = db.query(User).filter(User.username == "admin").first()
+        hashed_pw = get_password_hash("psiko_secret123")
+        if not admin_user:
+            user = User(
+                username="admin",
+                password_hash=hashed_pw,
+                email="admin",
+                full_name="Admin",
+                role="admin"
+            )
+            db.add(user)
+            db.commit()
+            logger.info("SEED | Seeded default admin user.")
+        else:
+            updated = False
+            if admin_user.email != "admin":
+                admin_user.email = "admin"
+                updated = True
+            if admin_user.role != "admin":
+                admin_user.role = "admin"
+                updated = True
+            if admin_user.full_name != "Admin":
+                admin_user.full_name = "Admin"
+                updated = True
+            if not verify_password("psiko_secret123", admin_user.password_hash):
+                admin_user.password_hash = hashed_pw
+                updated = True
+            if updated:
+                db.commit()
+                logger.info("SEED | Updated existing admin user to match defaults.")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"SEED | Error seeding/updating admin user: {e}")
+    finally:
+        db.close()
+
+def seed_test_user():
+    """Seeds a default test user for forgot password testing."""
+    from src.services.auth import get_password_hash
+    db = SessionLocal()
+    try:
+        test_user = db.query(User).filter(User.email == "denizdennasnas@gmail.com").first()
+        if not test_user:
+            hashed_pw = get_password_hash("Psiko123!")
+            user = User(
+                username="deniz",
+                password_hash=hashed_pw,
+                email="denizdennasnas@gmail.com",
+                full_name="Deniz Nas",
+                role="user"
+            )
+            db.add(user)
+            db.commit()
+            logger.info("SEED | Seeded default test user denizdennasnas@gmail.com.")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"SEED | Error seeding test user: {e}")
+    finally:
+        db.close()
+
+
+def get_pending_psychologists():
+    db = SessionLocal()
+    try:
+        results = db.query(User, PsychologistProfile).join(
+            PsychologistProfile, User.id == PsychologistProfile.user_id
+        ).filter(PsychologistProfile.status == "pending").all()
+        
+        output = []
+        for user, profile in results:
+            output.append({
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "full_name": user.full_name,
+                "title": profile.title,
+                "specialty": profile.specialty,
+                "bio": profile.bio,
+                "status": profile.status,
+                "created_at": profile.created_at.isoformat() if profile.created_at else None
+            })
+        return output
+    except Exception as e:
+        logger.error(f"Error getting pending psychologists: {e}")
+        return []
+    finally:
+        db.close()
+
+
+def get_all_psychologists():
+    db = SessionLocal()
+    try:
+        results = db.query(User, PsychologistProfile).join(
+            PsychologistProfile, User.id == PsychologistProfile.user_id
+        ).all()
+        
+        output = []
+        for user, profile in results:
+            output.append({
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "full_name": user.full_name,
+                "title": profile.title,
+                "specialty": profile.specialty,
+                "bio": profile.bio,
+                "status": profile.status,
+                "created_at": profile.created_at.isoformat() if profile.created_at else None
+            })
+        return output
+    except Exception as e:
+        logger.error(f"Error getting all psychologists: {e}")
+        return []
+    finally:
+        db.close()
+
+
+def reject_psychologist(username: str) -> bool:
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.username == username).first()
+        if not user:
+            return False
+        profile = db.query(PsychologistProfile).filter(PsychologistProfile.user_id == user.id).first()
+        if not profile:
+            return False
+        profile.status = "rejected"
+        profile.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        return True
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error rejecting psychologist: {e}")
+        return False
+    finally:
+        db.close()
+
+
+def check_overlap(start1: str, end1: str, start2: str, end2: str) -> bool:
+    def parse_t(t):
+        h, m = map(int, t.split(":"))
+        return h * 60 + m
+    s1, e1 = parse_t(start1), parse_t(end1)
+    s2, e2 = parse_t(start2), parse_t(end2)
+    return max(s1, s2) < min(e1, e2)
+
+
+def has_overlapping_availability(db, psychologist_id: int, day_of_week: int, start_time: str, end_time: str, exclude_id: int = None) -> bool:
+    query = db.query(PsychologistAvailability).filter(
+        PsychologistAvailability.psychologist_id == psychologist_id,
+        PsychologistAvailability.day_of_week == day_of_week,
+        PsychologistAvailability.is_active == True
+    )
+    if exclude_id is not None:
+        query = query.filter(PsychologistAvailability.id != exclude_id)
+    
+    existing = query.all()
+    for av in existing:
+        if check_overlap(start_time, end_time, av.start_time, av.end_time):
+            return True
+    return False
+
+
+def get_psychologist_availabilities_db(psychologist_id: int):
+    db = SessionLocal()
+    try:
+        rows = db.query(PsychologistAvailability).filter(
+            PsychologistAvailability.psychologist_id == psychologist_id
+        ).all()
+        return [
+            {
+                "id": r.id,
+                "psychologist_id": r.psychologist_id,
+                "day_of_week": r.day_of_week,
+                "start_time": r.start_time,
+                "end_time": r.end_time,
+                "slot_duration_minutes": r.slot_duration_minutes,
+                "is_active": r.is_active,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "updated_at": r.updated_at.isoformat() if r.updated_at else None
+            }
+            for r in rows
+        ]
+    finally:
+        db.close()
+
+
+def create_psychologist_availability_db(psychologist_id: int, day_of_week: int, start_time: str, end_time: str, slot_duration_minutes: int):
+    if day_of_week < 0 or day_of_week > 6:
+        raise ValueError("Gün seçimi 0 ile 6 arasında olmalıdır.")
+    
+    if slot_duration_minutes not in [30, 45, 60, 90]:
+        raise ValueError("Geçersiz seans süresi. Sadece 30, 45, 60 veya 90 dakika seçebilirsiniz.")
+    
+    try:
+        def parse_t(t):
+            h, m = map(int, t.split(":"))
+            if h < 0 or h > 23 or m < 0 or m > 59:
+                raise ValueError()
+            return h * 60 + m
+        s_min = parse_t(start_time)
+        e_min = parse_t(end_time)
+    except Exception:
+        raise ValueError("Saat formatı geçerli HH:MM formatında olmalıdır.")
+        
+    if s_min >= e_min:
+        raise ValueError("Başlangıç saati bitiş saatinden önce olmalıdır.")
+        
+    db = SessionLocal()
+    try:
+        if has_overlapping_availability(db, psychologist_id, day_of_week, start_time, end_time):
+            raise ValueError("Bu zaman aralığı mevcut bir müsaitlik kaydınızla çakışıyor.")
+            
+        new_av = PsychologistAvailability(
+            psychologist_id=psychologist_id,
+            day_of_week=day_of_week,
+            start_time=start_time,
+            end_time=end_time,
+            slot_duration_minutes=slot_duration_minutes,
+            is_active=True
+        )
+        db.add(new_av)
+        db.commit()
+        db.refresh(new_av)
+        return {
+            "id": new_av.id,
+            "psychologist_id": new_av.psychologist_id,
+            "day_of_week": new_av.day_of_week,
+            "start_time": new_av.start_time,
+            "end_time": new_av.end_time,
+            "slot_duration_minutes": new_av.slot_duration_minutes,
+            "is_active": new_av.is_active,
+            "created_at": new_av.created_at.isoformat() if new_av.created_at else None,
+            "updated_at": new_av.updated_at.isoformat() if new_av.updated_at else None
+        }
+    except Exception as e:
+        db.rollback()
+        raise e
+    finally:
+        db.close()
+
+
+def update_psychologist_availability_db(psychologist_id: int, availability_id: int, day_of_week: Optional[int] = None, start_time: Optional[str] = None, end_time: Optional[str] = None, slot_duration_minutes: Optional[int] = None, is_active: Optional[bool] = None):
+    db = SessionLocal()
+    try:
+        av = db.query(PsychologistAvailability).filter(
+            PsychologistAvailability.id == availability_id
+        ).first()
+        if not av:
+            raise ValueError("Müsaitlik kaydı bulunamadı.")
+            
+        if av.psychologist_id != psychologist_id:
+            raise ValueError("Bu müsaitlik kaydını düzenleme yetkiniz yok.")
+            
+        new_day = day_of_week if day_of_week is not None else av.day_of_week
+        new_start = start_time if start_time is not None else av.start_time
+        new_end = end_time if end_time is not None else av.end_time
+        new_duration = slot_duration_minutes if slot_duration_minutes is not None else av.slot_duration_minutes
+        new_active = is_active if is_active is not None else av.is_active
+        
+        if new_day < 0 or new_day > 6:
+            raise ValueError("Gün seçimi 0 ile 6 arasında olmalıdır.")
+            
+        if new_duration not in [30, 45, 60, 90]:
+            raise ValueError("Geçersiz seans süresi. Sadece 30, 45, 60 veya 90 dakika seçebilirsiniz.")
+            
+        try:
+            def parse_t(t):
+                h, m = map(int, t.split(":"))
+                if h < 0 or h > 23 or m < 0 or m > 59:
+                    raise ValueError()
+                return h * 60 + m
+            s_min = parse_t(new_start)
+            e_min = parse_t(new_end)
+        except Exception:
+            raise ValueError("Saat formatı geçerli HH:MM formatında olmalıdır.")
+            
+        if s_min >= e_min:
+            raise ValueError("Başlangıç saati bitiş saatinden önce olmalıdır.")
+            
+        if new_active:
+            if has_overlapping_availability(db, psychologist_id, new_day, new_start, new_end, exclude_id=availability_id):
+                raise ValueError("Bu zaman aralığı mevcut bir müsaitlik kaydınızla çakışıyor.")
+                
+        av.day_of_week = new_day
+        av.start_time = new_start
+        av.end_time = new_end
+        av.slot_duration_minutes = new_duration
+        av.is_active = new_active
+        av.updated_at = datetime.now(timezone.utc)
+        
+        db.commit()
+        db.refresh(av)
+        return {
+            "id": av.id,
+            "psychologist_id": av.psychologist_id,
+            "day_of_week": av.day_of_week,
+            "start_time": av.start_time,
+            "end_time": av.end_time,
+            "slot_duration_minutes": av.slot_duration_minutes,
+            "is_active": av.is_active,
+            "created_at": av.created_at.isoformat() if av.created_at else None,
+            "updated_at": av.updated_at.isoformat() if av.updated_at else None
+        }
+    except Exception as e:
+        db.rollback()
+        raise e
+    finally:
+        db.close()
+
+
+def delete_psychologist_availability_db(psychologist_id: int, availability_id: int) -> bool:
+    db = SessionLocal()
+    try:
+        av = db.query(PsychologistAvailability).filter(
+            PsychologistAvailability.id == availability_id
+        ).first()
+        if not av:
+            return False
+            
+        if av.psychologist_id != psychologist_id:
+            raise ValueError("Bu müsaitlik kaydını silme yetkiniz yok.")
+            
+        db.delete(av)
+        db.commit()
+        return True
+    except Exception as e:
+        db.rollback()
+        raise e
+    finally:
+        db.close()
+
+
 
 
 

@@ -17,6 +17,8 @@ import com.psikochat.app.ui.auth.LoginScreen
 import com.psikochat.app.ui.auth.SplashScreen
 import com.psikochat.app.ui.auth.RegistrationScreen
 import com.psikochat.app.ui.auth.ForgotPasswordScreen
+import com.psikochat.app.ui.auth.VerificationCodeScreen
+import com.psikochat.app.ui.auth.ResetPasswordScreen
 import com.psikochat.app.ui.home.HomeScreen
 import com.psikochat.app.ui.home.ProfileScreen
 import com.psikochat.app.ui.home.SettingsScreen
@@ -28,6 +30,7 @@ import com.psikochat.app.ui.home.WellnessDashboardScreen
 import com.psikochat.app.ui.home.MemorySettingsScreen
 import com.psikochat.app.ui.home.PrivacyDataScreen
 import com.psikochat.app.ui.home.RecommendationScreen
+import com.psikochat.app.ui.home.AdminPsychologistApprovalScreen
 import com.psikochat.app.ui.chat.ChatScreen
 
 import androidx.compose.runtime.collectAsState
@@ -127,7 +130,23 @@ class MainActivity : ComponentActivity() {
                         navigation(startDestination = "login", route = "auth_graph") {
                             composable("login") { LoginScreen(navController, tokenManager) }
                             composable("register") { RegistrationScreen(navController, tokenManager) }
-                            composable("forgot_password") { ForgotPasswordScreen(navController) }
+                            composable("forgot_password") { ForgotPasswordScreen(navController, tokenManager) }
+                            composable(
+                                "verification_code/{email}",
+                                arguments = listOf(androidx.navigation.navArgument("email") { type = androidx.navigation.NavType.StringType })
+                            ) { backStackEntry ->
+                                val email = backStackEntry.arguments?.getString("email") ?: ""
+                                val decodedEmail = java.net.URLDecoder.decode(email, "UTF-8")
+                                VerificationCodeScreen(navController, decodedEmail, tokenManager)
+                            }
+                            composable(
+                                "reset_password/{resetToken}",
+                                arguments = listOf(androidx.navigation.navArgument("resetToken") { type = androidx.navigation.NavType.StringType })
+                            ) { backStackEntry ->
+                                val resetToken = backStackEntry.arguments?.getString("resetToken") ?: ""
+                                val decodedToken = java.net.URLDecoder.decode(resetToken, "UTF-8")
+                                ResetPasswordScreen(navController, decodedToken, tokenManager)
+                            }
                         }
                         
                         navigation(startDestination = "home", route = "main_graph") {
@@ -144,6 +163,7 @@ class MainActivity : ComponentActivity() {
                             composable("privacy_data") { PrivacyDataScreen(navController, tokenManager) }
                             // Faz 10 Prompt 7: Recommendation Engine Screen
                             composable("recommendations") { RecommendationScreen(navController, tokenManager) }
+                            composable("admin_psychologists") { AdminPsychologistApprovalScreen(navController, tokenManager) }
                         }
                     }
                 }

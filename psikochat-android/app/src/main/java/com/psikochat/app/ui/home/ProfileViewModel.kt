@@ -9,6 +9,7 @@ import com.psikochat.app.data.model.UpdateProfileRequest
 import com.psikochat.app.data.repository.ProfileRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class ProfileViewModel(
@@ -46,7 +47,39 @@ class ProfileViewModel(
     val updateState: StateFlow<Resource<ProfileResponse>?> = _updateState
 
     init {
-        loadProfile()
+        viewModelScope.launch {
+            try {
+                val localUrl = tokenManager.getProfilePhotoUrl().first()
+                if (!localUrl.isNullOrBlank()) {
+                    val current = cachedProfile
+                    if (current == null) {
+                        val dummy = ProfileResponse(
+                            username = tokenManager.getUsername().first(),
+                            displayName = tokenManager.getFullName().first(),
+                            bio = null,
+                            profilePhotoUrl = localUrl,
+                            preferredLanguage = "tr",
+                            responseStyle = "supportive",
+                            themePreference = "system",
+                            notificationsEnabled = true,
+                            privacyMode = false,
+                            answerLengthPreference = "medium",
+                            createdAt = "",
+                            updatedAt = ""
+                        )
+                        cachedProfile = dummy
+                        _profileState.value = Resource.Loading(applyCacheBuster(dummy))
+                    } else if (current.profilePhotoUrl.isNullOrBlank()) {
+                        val updated = current.copy(profilePhotoUrl = localUrl)
+                        cachedProfile = updated
+                        _profileState.value = Resource.Loading(applyCacheBuster(updated))
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore errors reading local cache during initialization
+            }
+            loadProfile()
+        }
     }
 
     fun loadProfile() {
@@ -54,11 +87,22 @@ class ProfileViewModel(
             _profileState.value = Resource.Loading(applyCacheBuster(cachedProfile))
             val result = repository.getProfile()
             if (result is Resource.Success) {
-                val processed = applyCacheBuster(result.data)
-                cachedProfile = processed
-                _profileState.value = Resource.Success(processed!!)
-                result.data?.themePreference?.let {
-                    tokenManager.saveThemePreference(it)
+                val data = result.data
+                if (data != null) {
+                    val finalPhotoUrl = if (data.profilePhotoUrl.isNullOrBlank()) {
+                        cachedProfile?.profilePhotoUrl ?: tokenManager.getProfilePhotoUrl().first()
+                    } else {
+                        data.profilePhotoUrl
+                    }
+                    val updatedData = data.copy(profilePhotoUrl = finalPhotoUrl)
+                    if (!finalPhotoUrl.isNullOrBlank()) {
+                        val canonicalUrl = finalPhotoUrl.substringBefore("?").substringBefore("&")
+                        tokenManager.saveProfilePhotoUrl(canonicalUrl)
+                    }
+                    val processed = applyCacheBuster(updatedData)
+                    cachedProfile = processed
+                    _profileState.value = Resource.Success(processed!!)
+                    tokenManager.saveThemePreference(data.themePreference)
                 }
             } else {
                 val cached = cachedProfile
@@ -96,11 +140,22 @@ class ProfileViewModel(
             val result = repository.updateProfile(request)
             _updateState.value = result
             if (result is Resource.Success) {
-                val processed = applyCacheBuster(result.data)
-                cachedProfile = processed
-                _profileState.value = Resource.Success(processed!!)
-                result.data?.themePreference?.let {
-                    tokenManager.saveThemePreference(it)
+                val data = result.data
+                if (data != null) {
+                    val finalPhotoUrl = if (data.profilePhotoUrl.isNullOrBlank()) {
+                        cachedProfile?.profilePhotoUrl ?: tokenManager.getProfilePhotoUrl().first()
+                    } else {
+                        data.profilePhotoUrl
+                    }
+                    val updatedData = data.copy(profilePhotoUrl = finalPhotoUrl)
+                    if (!finalPhotoUrl.isNullOrBlank()) {
+                        val canonicalUrl = finalPhotoUrl.substringBefore("?").substringBefore("&")
+                        tokenManager.saveProfilePhotoUrl(canonicalUrl)
+                    }
+                    val processed = applyCacheBuster(updatedData)
+                    cachedProfile = processed
+                    _profileState.value = Resource.Success(processed!!)
+                    tokenManager.saveThemePreference(data.themePreference)
                 }
             }
         }
@@ -112,10 +167,18 @@ class ProfileViewModel(
             val result = repository.uploadProfilePhoto(filePart)
             _updateState.value = result
             if (result is Resource.Success) {
-                photoUpdateTimestamp = System.currentTimeMillis()
-                val processed = applyCacheBuster(result.data)
-                cachedProfile = processed
-                _profileState.value = Resource.Success(processed!!)
+                val data = result.data
+                if (data != null) {
+                    photoUpdateTimestamp = System.currentTimeMillis()
+                    val finalPhotoUrl = data.profilePhotoUrl
+                    if (!finalPhotoUrl.isNullOrBlank()) {
+                        val canonicalUrl = finalPhotoUrl.substringBefore("?").substringBefore("&")
+                        tokenManager.saveProfilePhotoUrl(canonicalUrl)
+                    }
+                    val processed = applyCacheBuster(data)
+                    cachedProfile = processed
+                    _profileState.value = Resource.Success(processed!!)
+                }
             }
         }
     }

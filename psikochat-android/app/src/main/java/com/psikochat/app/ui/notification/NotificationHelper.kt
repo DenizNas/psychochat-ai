@@ -21,34 +21,67 @@ object NotificationHelper {
 
     fun createNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val importance = NotificationManager.IMPORTANCE_DEFAULT
-            val channel = NotificationChannel(CHANNEL_ID, CHANNEL_NAME, importance).apply {
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            
+            // Old general channel
+            val defaultImportance = NotificationManager.IMPORTANCE_DEFAULT
+            val channel = NotificationChannel(CHANNEL_ID, CHANNEL_NAME, defaultImportance).apply {
                 description = CHANNEL_DESC
                 enableVibration(true)
                 vibrationPattern = longArrayOf(100, 200, 300, 400, 500, 400, 300, 200, 100)
             }
-            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.createNotificationChannel(channel)
+
+            // 1. Appointment reminders channel
+            val appointmentsChannel = NotificationChannel(
+                "appointment_reminders",
+                "Randevu Hatırlatmaları",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Randevu hatırlatma bildirimleri"
+                enableVibration(true)
+            }
+            manager.createNotificationChannel(appointmentsChannel)
+
+            // 2. Daily check-in channel
+            val dailyCheckinChannel = NotificationChannel(
+                "daily_checkins",
+                "Günlük Check-in",
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "Günlük duygu check-in bildirimleri"
+                enableVibration(true)
+            }
+            manager.createNotificationChannel(dailyCheckinChannel)
+
+            // 3. Weekly recaps channel
+            val weeklyRecapChannel = NotificationChannel(
+                "weekly_recaps",
+                "Haftalık Özet",
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "Haftalık gelişim ve duygu özetleri"
+                enableVibration(true)
+            }
+            manager.createNotificationChannel(weeklyRecapChannel)
         }
     }
 
     @android.annotation.SuppressLint("MissingPermission")
-    fun showNotification(context: Context, id: Int, title: String, body: String, type: String) {
+    fun showNotification(
+        context: Context,
+        id: Int,
+        title: String,
+        body: String,
+        channelId: String,
+        targetRoute: String
+    ) {
         // Enforce runtime permissions check for Android 13 (Tiramisu, API 33) and above
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 // Permission not granted, skip local display
                 return
             }
-        }
-
-        // Map target routes based on notification type
-        val targetRoute = when (type) {
-            "scheduled_intervention" -> "wellness_schedule"
-            "daily_report", "weekly_report" -> "wellness_report"
-            "mood_journal_reminder" -> "mood_journal"
-            "crisis" -> "wellness_schedule"
-            else -> "home"
         }
 
         // Create pending intent routing to MainActivity carrying the route destination extra
@@ -65,7 +98,7 @@ object NotificationHelper {
         )
 
         // Build notification utilizing wellness style: short, comforting, clear
-        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(android.R.drawable.ic_dialog_info) // System standard info icon for compilation safety
             .setContentTitle(title)
             .setContentText(body)
@@ -79,6 +112,19 @@ object NotificationHelper {
                 notify(id, builder.build())
             }
         }
+    }
+
+    @android.annotation.SuppressLint("MissingPermission")
+    fun showNotification(context: Context, id: Int, title: String, body: String, type: String) {
+        // Map target routes based on notification type
+        val targetRoute = when (type) {
+            "scheduled_intervention" -> "wellness_schedule"
+            "daily_report", "weekly_report" -> "wellness_report"
+            "mood_journal_reminder" -> "mood_journal"
+            "crisis" -> "wellness_schedule"
+            else -> "home"
+        }
+        showNotification(context, id, title, body, CHANNEL_ID, targetRoute)
     }
 
     fun checkAndRequestPermission(activity: MainActivity) {

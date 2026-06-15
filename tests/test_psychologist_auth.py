@@ -185,3 +185,81 @@ class TestPsychologistAuthAndRoleExposure(unittest.TestCase):
         self.assertEqual(psy_item["title"], "Dr. Psk.")
         self.assertEqual(psy_item["specialty"], "Bilişsel Terapi")
         self.assertEqual(psy_item["status"], "approved")
+
+    def test_admin_psychologists_pending_reject_and_all_endpoints(self):
+        client = TestClient(app)
+        import base64
+        auth_str = base64.b64encode(b"admin:psiko_secret123").decode("utf-8")
+        admin_headers = {"Authorization": f"Basic {auth_str}"}
+
+        # 1. Register a psychologist
+        payload = {
+            "username": "psy_pending_test",
+            "password": "password123",
+            "email": "pending_test@example.com",
+            "full_name": "Pending Psychologist",
+            "role": "psychologist",
+            "title": "Dr. Psk.",
+            "specialty": "Kaygı",
+            "bio": "Kaygı uzmanıyım."
+        }
+        res_reg = client.post("/register", json=payload)
+        self.assertEqual(res_reg.status_code, 201)
+
+        # 2. Get pending psychologists list - verify psy is in list
+        res_pending = client.get("/admin/psychologists/pending", headers=admin_headers)
+        self.assertEqual(res_pending.status_code, 200)
+        pending_list = res_pending.json()
+        self.assertTrue(len(pending_list) >= 1)
+        psy_item = next((p for p in pending_list if p["username"] == "psy_pending_test"), None)
+        self.assertIsNotNone(psy_item)
+        self.assertEqual(psy_item["status"], "pending")
+        self.assertEqual(psy_item["full_name"], "Pending Psychologist")
+        self.assertEqual(psy_item["email"], "pending_test@example.com")
+        self.assertEqual(psy_item["specialty"], "Kaygı")
+        self.assertIn("created_at", psy_item)
+
+        # 3. Get all psychologists list - verify psy is in list
+        res_all = client.get("/admin/psychologists/all", headers=admin_headers)
+        self.assertEqual(res_all.status_code, 200)
+        all_list = res_all.json()
+        self.assertTrue(len(all_list) >= 1)
+        psy_all_item = next((p for p in all_list if p["username"] == "psy_pending_test"), None)
+        self.assertIsNotNone(psy_all_item)
+
+        # 4. Reject psychologist
+        res_reject = client.post("/admin/psychologists/psy_pending_test/reject", headers=admin_headers)
+        self.assertEqual(res_reject.status_code, 200)
+        self.assertEqual(res_reject.json().get("status"), "success")
+
+        # 5. Verify no longer in pending list
+        res_pending_after = client.get("/admin/psychologists/pending", headers=admin_headers)
+        self.assertEqual(res_pending_after.status_code, 200)
+        pending_list_after = res_pending_after.json()
+        psy_item_after = next((p for p in pending_list_after if p["username"] == "psy_pending_test"), None)
+        self.assertIsNone(psy_item_after)
+
+        # 6. Verify status in all list is "rejected"
+        res_all_after = client.get("/admin/psychologists/all", headers=admin_headers)
+        self.assertEqual(res_all_after.status_code, 200)
+        all_list_after = res_all_after.json()
+        psy_all_item_after = next((p for p in all_list_after if p["username"] == "psy_pending_test"), None)
+        self.assertIsNotNone(psy_all_item_after)
+        self.assertEqual(psy_all_item_after["status"], "rejected")
+
+    def test_unauthorized_access_blocked(self):
+        client = TestClient(app)
+
+        # Accessing admin endpoints without credentials should fail with 401
+        res1 = client.get("/admin/psychologists/pending")
+        self.assertEqual(res1.status_code, 401)
+
+        res2 = client.get("/admin/psychologists/all")
+        self.assertEqual(res2.status_code, 401)
+
+        res3 = client.post("/admin/psychologists/psy_pending_test/approve")
+        self.assertEqual(res3.status_code, 401)
+
+        res4 = client.post("/admin/psychologists/psy_pending_test/reject")
+        self.assertEqual(res4.status_code, 401)
+

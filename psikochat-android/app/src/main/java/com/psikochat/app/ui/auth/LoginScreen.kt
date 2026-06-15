@@ -38,6 +38,9 @@ import com.psikochat.app.data.model.Resource
 import com.psikochat.app.data.repository.AuthRepository
 import com.psikochat.app.ui.theme.*
 import kotlinx.coroutines.flow.first
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import com.psikochat.app.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -84,11 +87,13 @@ fun LoginScreen(navController: NavController, tokenManager: TokenManager) {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Favorite,
+                        Image(
+                            painter = painterResource(id = R.drawable.ic_logo),
                             contentDescription = null,
-                            modifier = Modifier.size(20.dp),
-                            tint = DarkTealPrimary
+                            modifier = Modifier
+                                .size(20.dp)
+                                .clip(CircleShape),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
@@ -118,20 +123,12 @@ fun LoginScreen(navController: NavController, tokenManager: TokenManager) {
             Spacer(modifier = Modifier.height(28.dp))
             
             // Premium Brand Emblem
-            Box(
-                modifier = Modifier
-                    .size(96.dp)
-                    .clip(CircleShape)
-                    .background(SoftMintAccent),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Favorite,
-                    contentDescription = null,
-                    modifier = Modifier.size(48.dp),
-                    tint = DarkTealPrimary
-                )
-            }
+            Image(
+                painter = painterResource(id = R.drawable.ic_logo),
+                contentDescription = null,
+                modifier = Modifier.size(120.dp),
+                contentScale = androidx.compose.ui.layout.ContentScale.Fit
+            )
             
             Spacer(modifier = Modifier.height(12.dp))
             
@@ -148,7 +145,7 @@ fun LoginScreen(navController: NavController, tokenManager: TokenManager) {
             Spacer(modifier = Modifier.height(8.dp))
             
             Text(
-                text = "Kişisel Zihinsel Wellness Asistanınız",
+                text = "Kişisel Zihinsel Asistanınız",
                 style = MaterialTheme.typography.bodyLarge.copy(
                     fontWeight = FontWeight.Medium,
                     lineHeight = 22.sp,

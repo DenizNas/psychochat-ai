@@ -1,17 +1,24 @@
 {
   "recurring_topics": [],
   "recurring_emotions": [
-    "sadness"
+    "sadness",
+    "anxiety"
   ],
   "goals": [],
   "stressors": [
-    "motivasyon kaybı"
+    "motivasyon kaybı",
+    "sınav kaygısı",
+    "sınav stresi",
+    "yalnızlık"
   ],
   "coping_methods": [],
   "positive_events": [],
   "relationship_context": [],
-  "work_or_school_context": [],
+  "work_or_school_context": [
+    "akademik süreç"
+  ],
   "last_advice_topics": [
-    "social connection"
+    "social connection",
+    "breathing exercise"
   ]
 }

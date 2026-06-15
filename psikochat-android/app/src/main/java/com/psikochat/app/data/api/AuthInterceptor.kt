@@ -19,7 +19,7 @@ class AuthInterceptor(private val tokenManager: TokenManager) : Interceptor {
         val originalRequest = chain.request()
         val path = originalRequest.url.encodedPath
         
-        val isAuthEndpoint = path.contains("login") || path.contains("register")
+        val isAuthEndpoint = path.contains("login") || path.contains("register") || path.contains("password-reset")
         if (token.isNullOrEmpty() && !isAuthEndpoint) {
             Log.w(TAG, "Token yok, endpoint: $path — 401 döndürülüyor")
             return Response.Builder()

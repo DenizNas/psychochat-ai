@@ -96,8 +96,8 @@ class TestLLMRedundancy(unittest.TestCase):
 
         settings.AI_PRIMARY_PROVIDER = "openai"
         settings.AI_SECONDARY_PROVIDER = "anthropic"
-        settings.OPENAI_API_KEY = "sk-fake-openai"
-        settings.ANTHROPIC_API_KEY = "sk-fake-anthropic"
+        settings.OPENAI_API_KEY = "sk-mockkeyforopenai"
+        settings.ANTHROPIC_API_KEY = "sk-mockkeyforanthropic"
 
         messages = [{"role": "user", "content": "Hello."}]
         res = ai_orchestrator.generate_response(messages)
@@ -118,8 +118,8 @@ class TestLLMRedundancy(unittest.TestCase):
 
         settings.AI_PRIMARY_PROVIDER = "openai"
         settings.AI_SECONDARY_PROVIDER = "anthropic"
-        settings.OPENAI_API_KEY = "sk-fake-openai"
-        settings.ANTHROPIC_API_KEY = "sk-fake-anthropic"
+        settings.OPENAI_API_KEY = "sk-mockkeyforopenai"
+        settings.ANTHROPIC_API_KEY = "sk-mockkeyforanthropic"
         settings.AI_MAX_RETRIES = 0  # speed up failures
 
         messages = [{"role": "user", "content": "Hello."}]
@@ -143,7 +143,7 @@ class TestLLMRedundancy(unittest.TestCase):
 
         settings.AI_PRIMARY_PROVIDER = "openai"
         settings.AI_SECONDARY_PROVIDER = "ollama"
-        settings.OPENAI_API_KEY = "sk-fake-openai"
+        settings.OPENAI_API_KEY = "sk-mockkeyforopenai"
         settings.AI_MAX_RETRIES = 0
 
         messages = [{"role": "user", "content": "Hello."}]
@@ -167,8 +167,8 @@ class TestLLMRedundancy(unittest.TestCase):
         settings.AI_PRIMARY_PROVIDER = "openai"
         settings.AI_SECONDARY_PROVIDER = "anthropic"
         settings.AI_FALLBACK_PROVIDER = "local"
-        settings.OPENAI_API_KEY = "sk-fake-openai"
-        settings.ANTHROPIC_API_KEY = "sk-fake-anthropic"
+        settings.OPENAI_API_KEY = "sk-mockkeyforopenai"
+        settings.ANTHROPIC_API_KEY = "sk-mockkeyforanthropic"
         settings.AI_MAX_RETRIES = 0
 
         messages = [{"role": "user", "content": "Nasılsın?"}]
@@ -187,7 +187,7 @@ class TestLLMRedundancy(unittest.TestCase):
         settings.AI_PRIMARY_PROVIDER = "openai"
         settings.AI_SECONDARY_PROVIDER = "none"
         settings.AI_FALLBACK_PROVIDER = "local"
-        settings.OPENAI_API_KEY = "sk-fake-openai"
+        settings.OPENAI_API_KEY = "sk-mockkeyforopenai"
         settings.AI_MAX_RETRIES = 0
 
         messages = [{"role": "user", "content": "Merhaba."}]
@@ -260,8 +260,8 @@ class TestLLMRedundancy(unittest.TestCase):
 
         settings.AI_PRIMARY_PROVIDER = "openai"
         settings.AI_SECONDARY_PROVIDER = "anthropic"
-        settings.OPENAI_API_KEY = "sk-fake-openai"
-        settings.ANTHROPIC_API_KEY = "sk-fake-anthropic"
+        settings.OPENAI_API_KEY = "sk-mockkeyforopenai"
+        settings.ANTHROPIC_API_KEY = "sk-mockkeyforanthropic"
         settings.AI_MAX_RETRIES = 0
 
         inp = EngineInput(

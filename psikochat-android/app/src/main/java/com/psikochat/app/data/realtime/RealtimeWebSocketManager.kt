@@ -133,9 +133,10 @@ class RealtimeWebSocketManager(
         }
 
         // WS URL oluştur (token query param olarak eklenir; header desteği yok)
-        val baseUrl = BuildConfig.BASE_URL
+        val baseUrl = com.psikochat.app.data.api.RetrofitClient.BASE_URL
             .replace("https://", "wss://")
             .replace("http://", "ws://")
+            .removeSuffix("/")
         val wsUrl = "$baseUrl$WS_PATH?token=$token"
 
         val request = Request.Builder()
@@ -226,6 +227,12 @@ class RealtimeWebSocketManager(
                     risk = payload.optString("risk", "low"),
                     response = payload.optString("response", ""),
                     emergencyContact = payload.optString("emergency_contact").takeIf { it.isNotEmpty() },
+                    isCrisis = if (payload.has("is_crisis")) payload.optBoolean("is_crisis") else null,
+                    crisisLevel = if (payload.has("crisis_level")) payload.optString("crisis_level") else null,
+                    showEmergencySupport = if (payload.has("show_emergency_support")) payload.optBoolean("show_emergency_support") else null,
+                    emergencyPhone = payload.optString("emergency_phone").takeIf { it.isNotEmpty() },
+                    emergencyTitle = payload.optString("emergency_title").takeIf { it.isNotEmpty() },
+                    emergencyMessage = payload.optString("emergency_message").takeIf { it.isNotEmpty() },
                 )
                 "typing_indicator" -> WsEvent.TypingIndicator(
                     isTyping = payload.optBoolean("is_typing", false)
@@ -269,6 +276,12 @@ sealed class WsEvent {
         val risk: String,
         val response: String,
         val emergencyContact: String?,
+        val isCrisis: Boolean? = null,
+        val crisisLevel: String? = null,
+        val showEmergencySupport: Boolean? = null,
+        val emergencyPhone: String? = null,
+        val emergencyTitle: String? = null,
+        val emergencyMessage: String? = null
     ) : WsEvent()
 
     data class TypingIndicator(val isTyping: Boolean) : WsEvent()

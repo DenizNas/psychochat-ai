@@ -20,9 +20,23 @@ class TokenManager(private val context: Context) {
         val ROLE_KEY = stringPreferencesKey("role")
         val ONBOARDING_COMPLETED_KEY = booleanPreferencesKey("onboarding_completed")
         val THEME_KEY = stringPreferencesKey("theme_preference")
+        val APPOINTMENTS_REMINDER_KEY = booleanPreferencesKey("notifications_appointments_reminder")
+        val DAILY_CHECKIN_KEY = booleanPreferencesKey("notifications_daily_checkin")
+        val DAILY_CHECKIN_TIME_KEY = stringPreferencesKey("notifications_daily_checkin_time")
+        val WEEKLY_RECAP_KEY = booleanPreferencesKey("notifications_weekly_recap")
+        val WEEKLY_RECAP_DAY_KEY = stringPreferencesKey("notifications_weekly_recap_day")
+        val WEEKLY_RECAP_TIME_KEY = stringPreferencesKey("notifications_weekly_recap_time")
+        val PROFILE_PHOTO_URL_KEY = stringPreferencesKey("profile_photo_url")
     }
     
     fun getToken(): Flow<String?> = context.dataStore.data.map { it[TOKEN_KEY] }
+    fun getProfilePhotoUrl(): Flow<String?> = context.dataStore.data.map { it[PROFILE_PHOTO_URL_KEY] }
+    
+    suspend fun saveProfilePhotoUrl(url: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PROFILE_PHOTO_URL_KEY] = url
+        }
+    }
     fun getUsername(): Flow<String> =
     context.dataStore.data.map { it[USERNAME_KEY] ?: "Kullanıcı" }
     
@@ -51,6 +65,48 @@ class TokenManager(private val context: Context) {
             preferences[THEME_KEY] = theme
         }
     }
+
+    fun getAppointmentsReminderEnabled(): Flow<Boolean> = context.dataStore.data.map { it[APPOINTMENTS_REMINDER_KEY] ?: true }
+    suspend fun saveAppointmentsReminderEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[APPOINTMENTS_REMINDER_KEY] = enabled
+        }
+    }
+
+    fun getDailyCheckInEnabled(): Flow<Boolean> = context.dataStore.data.map { it[DAILY_CHECKIN_KEY] ?: true }
+    suspend fun saveDailyCheckInEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[DAILY_CHECKIN_KEY] = enabled
+        }
+    }
+
+    fun getDailyCheckInTime(): Flow<String> = context.dataStore.data.map { it[DAILY_CHECKIN_TIME_KEY] ?: "20:00" }
+    suspend fun saveDailyCheckInTime(time: String) {
+        context.dataStore.edit { preferences ->
+            preferences[DAILY_CHECKIN_TIME_KEY] = time
+        }
+    }
+
+    fun getWeeklyRecapEnabled(): Flow<Boolean> = context.dataStore.data.map { it[WEEKLY_RECAP_KEY] ?: true }
+    suspend fun saveWeeklyRecapEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[WEEKLY_RECAP_KEY] = enabled
+        }
+    }
+
+    fun getWeeklyRecapDay(): Flow<String> = context.dataStore.data.map { it[WEEKLY_RECAP_DAY_KEY] ?: "SUNDAY" }
+    suspend fun saveWeeklyRecapDay(day: String) {
+        context.dataStore.edit { preferences ->
+            preferences[WEEKLY_RECAP_DAY_KEY] = day
+        }
+    }
+
+    fun getWeeklyRecapTime(): Flow<String> = context.dataStore.data.map { it[WEEKLY_RECAP_TIME_KEY] ?: "19:00" }
+    suspend fun saveWeeklyRecapTime(time: String) {
+        context.dataStore.edit { preferences ->
+            preferences[WEEKLY_RECAP_TIME_KEY] = time
+        }
+    }
     
     suspend fun saveAuthData(token: String, username: String, email: String? = null, fullName: String? = null, role: String? = "user") {
         context.dataStore.edit { preferences ->
@@ -71,6 +127,13 @@ class TokenManager(private val context: Context) {
             preferences.remove(ROLE_KEY)
             preferences.remove(ONBOARDING_COMPLETED_KEY)
             preferences.remove(THEME_KEY)
+            preferences.remove(APPOINTMENTS_REMINDER_KEY)
+            preferences.remove(DAILY_CHECKIN_KEY)
+            preferences.remove(DAILY_CHECKIN_TIME_KEY)
+            preferences.remove(WEEKLY_RECAP_KEY)
+            preferences.remove(WEEKLY_RECAP_DAY_KEY)
+            preferences.remove(WEEKLY_RECAP_TIME_KEY)
+            preferences.remove(PROFILE_PHOTO_URL_KEY)
         }
         try {
             AppDatabase.getInstance(context).clearAllTables()
@@ -78,5 +141,6 @@ class TokenManager(private val context: Context) {
             // Shield exceptions
         }
     }
+    
     
 }

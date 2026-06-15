@@ -26,7 +26,8 @@ class AuthInterceptor(private val tokenManager: TokenManager) : Interceptor {
         val originalRequest = chain.request()
         val path = originalRequest.url.encodedPath
 
-        val isAuthEndpoint = path.contains("/login") || path.contains("/register")
+        val hasAuthHeader = originalRequest.header("Authorization") != null
+        val isAuthEndpoint = path.contains("/login") || path.contains("/register") || hasAuthHeader
 
         // Token yoksa ve auth endpoint değilse 401 döndür (network call yapmadan)
         if (token.isNullOrEmpty() && !isAuthEndpoint) {
@@ -41,7 +42,7 @@ class AuthInterceptor(private val tokenManager: TokenManager) : Interceptor {
         }
 
         val requestBuilder = originalRequest.newBuilder()
-        if (!token.isNullOrEmpty()) {
+        if (!token.isNullOrEmpty() && !hasAuthHeader) {
             requestBuilder.addHeader("Authorization", "Bearer $token")
             Log.d(TAG, "AUTH_INTERCEPTOR | Bearer token eklendi, endpoint: $path")
         }

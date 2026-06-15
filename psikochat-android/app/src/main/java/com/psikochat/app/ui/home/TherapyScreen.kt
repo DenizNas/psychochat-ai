@@ -76,7 +76,7 @@ fun TherapyScreen(navController: NavController, tokenManager: TokenManager) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val db = com.psikochat.app.data.local.AppDatabase.getInstance(context)
     val api = RetrofitClient.create(tokenManager)
-    val appointmentRepository = com.psikochat.app.data.repository.AppointmentRepository(api, db.appointmentDao())
+    val appointmentRepository = com.psikochat.app.data.repository.AppointmentRepository(api, db.appointmentDao(), context)
     val factory = object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -84,6 +84,12 @@ fun TherapyScreen(navController: NavController, tokenManager: TokenManager) {
         }
     }
     val viewModel: AppointmentViewModel = viewModel(factory = factory)
+    val availabilityRepo = remember { com.psikochat.app.data.repository.PsychologistAvailabilityRepository(api) }
+    val availabilityFactory = remember {
+        com.psikochat.app.ui.psychologist.PsychologistAvailabilityViewModelFactory(availabilityRepo)
+    }
+    val availabilityViewModel: com.psikochat.app.ui.psychologist.PsychologistAvailabilityViewModel = viewModel(factory = availabilityFactory)
+    val slotsState by availabilityViewModel.slotsState.collectAsState()
 
     val userRole by tokenManager.getRole().collectAsState(initial = "user")
 
@@ -527,7 +533,14 @@ fun TherapyScreen(navController: NavController, tokenManager: TokenManager) {
                                     Text("Geri", fontWeight = FontWeight.Bold)
                                 }
                                 PremiumButton(
-                                    onClick = { currentStep = 3 },
+                                    onClick = {
+                                        val psyId = selectedPsychologist?.id
+                                        val dateStr = selectedDateMillis?.let { formatBackendDate(it) }
+                                        if (psyId != null && dateStr != null) {
+                                            availabilityViewModel.loadAvailableSlots(psyId, dateStr)
+                                        }
+                                        currentStep = 3
+                                    },
                                     enabled = selectedDateMillis != null,
                                     modifier = Modifier.weight(1f),
                                     cornerRadius = 16.dp,
@@ -563,62 +576,108 @@ fun TherapyScreen(navController: NavController, tokenManager: TokenManager) {
 
                             Text("Müsait Zaman Dilimleri", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = LoginSecondaryText, modifier = Modifier.padding(bottom = 12.dp))
 
-                            val timeSlots = listOf("09:00", "10:00", "11:00", "13:00", "14:00", "15:00", "16:00")
+                            when (val state = slotsState) {
+                                is Resource.Loading -> {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 24.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        CircularProgressIndicator(color = DarkTealPrimary)
+                                    }
+                                }
+                                is Resource.Error -> {
+                                    val errMsg = state.message ?: ""
+                                    val isConnErr = errMsg.contains("connect", ignoreCase = true) ||
+                                            errMsg.contains("resolve", ignoreCase = true) ||
+                                            errMsg.contains("network", ignoreCase = true) ||
+                                            errMsg.contains("bağlantı", ignoreCase = true)
+                                    val displayErr = if (isConnErr) "Müsait saatleri almak için bağlantı gerekli." else errMsg
 
-                            // Display chips in structured rows
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                val row1 = timeSlots.take(4)
-                                val row2 = timeSlots.drop(4)
-
-                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                                    row1.forEach { slot ->
-                                        val isSelected = selectedTime == slot
-                                        val chipBg = if (isSelected) DarkTealPrimary else PremiumWhiteCard
-                                        val chipBorder = if (isSelected) DarkTealPrimary else Color.LightGray.copy(alpha = 0.5f)
-                                        val chipText = if (isSelected) Color.White else LoginTextColor
-
-                                        Surface(
-                                            modifier = Modifier.weight(1f).clickable { selectedTime = slot },
-                                            shape = RoundedCornerShape(12.dp),
-                                            color = chipBg,
-                                            border = BorderStroke(1.dp, chipBorder)
-                                        ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 24.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Icon(Icons.Default.Warning, contentDescription = null, tint = DangerRed, modifier = Modifier.size(36.dp))
+                                            Spacer(modifier = Modifier.height(8.dp))
                                             Text(
-                                                text = slot,
-                                                color = chipText,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 13.sp,
+                                                text = displayErr,
+                                                color = LoginTextColor,
                                                 textAlign = TextAlign.Center,
-                                                modifier = Modifier.padding(vertical = 12.dp)
+                                                fontSize = 13.sp
                                             )
                                         }
                                     }
                                 }
-
-                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                                    row2.forEach { slot ->
-                                        val isSelected = selectedTime == slot
-                                        val chipBg = if (isSelected) DarkTealPrimary else PremiumWhiteCard
-                                        val chipBorder = if (isSelected) DarkTealPrimary else Color.LightGray.copy(alpha = 0.5f)
-                                        val chipText = if (isSelected) Color.White else LoginTextColor
-
-                                        Surface(
-                                            modifier = Modifier.weight(1f).clickable { selectedTime = slot },
-                                            shape = RoundedCornerShape(12.dp),
-                                            color = chipBg,
-                                            border = BorderStroke(1.dp, chipBorder)
+                                is Resource.Success -> {
+                                    val slots = state.data?.slots?.filter { it.available } ?: emptyList()
+                                    if (slots.isEmpty()) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 24.dp),
+                                            contentAlignment = Alignment.Center
                                         ) {
                                             Text(
-                                                text = slot,
-                                                color = chipText,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 13.sp,
+                                                text = "Bu tarih için uygun saat bulunamadı.",
+                                                color = LoginSecondaryText,
                                                 textAlign = TextAlign.Center,
-                                                modifier = Modifier.padding(vertical = 12.dp)
+                                                fontSize = 14.sp
                                             )
                                         }
+                                    } else {
+                                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                            slots.chunked(4).forEach { rowSlots ->
+                                                Row(
+                                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    rowSlots.forEach { slotDto ->
+                                                        val slot = slotDto.time
+                                                        val isSelected = selectedTime == slot
+                                                        val chipBg = if (isSelected) DarkTealPrimary else PremiumWhiteCard
+                                                        val chipBorder = if (isSelected) DarkTealPrimary else Color.LightGray.copy(alpha = 0.5f)
+                                                        val chipText = if (isSelected) Color.White else LoginTextColor
+
+                                                        Surface(
+                                                            modifier = Modifier
+                                                                .weight(1f)
+                                                                .clickable { selectedTime = slot },
+                                                            shape = RoundedCornerShape(12.dp),
+                                                            color = chipBg,
+                                                            border = BorderStroke(1.dp, chipBorder)
+                                                        ) {
+                                                            Text(
+                                                                text = slot,
+                                                                color = chipText,
+                                                                fontWeight = FontWeight.Bold,
+                                                                fontSize = 13.sp,
+                                                                textAlign = TextAlign.Center,
+                                                                modifier = Modifier.padding(vertical = 12.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                    if (rowSlots.size < 4) {
+                                                        Spacer(modifier = Modifier.weight((4 - rowSlots.size).toFloat()))
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
-                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                                else -> {
+                                    // Fallback if not loaded
+                                    val psyId = selectedPsychologist?.id
+                                    val dateStr = selectedDateMillis?.let { formatBackendDate(it) }
+                                    if (psyId != null && dateStr != null) {
+                                        LaunchedEffect(psyId, dateStr) {
+                                            availabilityViewModel.loadAvailableSlots(psyId, dateStr)
+                                        }
+                                    }
                                 }
                             }
 

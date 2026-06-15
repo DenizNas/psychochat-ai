@@ -420,7 +420,7 @@ fun ProfileScreen(navController: NavController, tokenManager: TokenManager) {
                             }
                             Divider(color = Color.LightGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 8.dp))
                             ProfileOptionItem(Icons.Default.Notifications, "Bildirimler") {
-                                navController.navigate("settings")
+                                navController.navigate("notification_settings")
                             }
                         }
 

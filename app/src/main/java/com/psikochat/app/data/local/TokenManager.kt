@@ -29,12 +29,14 @@ class TokenManager(private val context: Context) {
         val TOKEN_KEY = stringPreferencesKey("jwt_token")
         val USERNAME_KEY = stringPreferencesKey("username")
         val THEME_KEY = stringPreferencesKey("theme_preference")
+        val ROLE_KEY = stringPreferencesKey("role")
     }
     
     fun getToken(): Flow<String?> = context.dataStore.data.map { it[TOKEN_KEY] }
     fun getUsername(): Flow<String> =
     context.dataStore.data.map { it[USERNAME_KEY] ?: "Kullanıcı" }
     fun getTheme(): Flow<String> = context.dataStore.data.map { it[THEME_KEY] ?: "system" }
+    fun getRole(): Flow<String> = context.dataStore.data.map { it[ROLE_KEY] ?: "user" }
     
     suspend fun saveTheme(theme: String) {
         context.dataStore.edit { preferences ->
@@ -42,11 +44,12 @@ class TokenManager(private val context: Context) {
         }
     }
     
-    /** Token ve kullanıcı adını DataStore'a kaydeder. Login/register+auto-login sonrası çağrılır. */
-    suspend fun saveAuthData(token: String, username: String) {
+    /** Token, kullanıcı adı ve rolü DataStore'a kaydeder. Login/register+auto-login sonrası çağrılır. */
+    suspend fun saveAuthData(token: String, username: String, role: String?) {
         context.dataStore.edit { preferences ->
             preferences[TOKEN_KEY] = token
             preferences[USERNAME_KEY] = username
+            preferences[ROLE_KEY] = role ?: "user"
         }
     }
     
@@ -58,6 +61,7 @@ class TokenManager(private val context: Context) {
         context.dataStore.edit { preferences ->
             preferences.remove(TOKEN_KEY)
             preferences.remove(USERNAME_KEY)
+            preferences.remove(ROLE_KEY)
         }
         try {
             AppDatabase.getInstance(context).clearAllTables()

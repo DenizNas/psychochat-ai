@@ -12,10 +12,31 @@ import java.util.concurrent.TimeUnit
 object RetrofitClient {
     private const val TAG = "RetrofitClient"
     
-    val BASE_URL = if (BuildConfig.BASE_URL.endsWith("/")) {
-        BuildConfig.BASE_URL
-    } else {
-        "${BuildConfig.BASE_URL}/"
+    val BASE_URL: String = run {
+        val configuredUrl = BuildConfig.BASE_URL
+        if (configuredUrl.contains("staging-api.psikochat.com") || configuredUrl.contains("api.psikochat.com")) {
+            if (configuredUrl.endsWith("/")) configuredUrl else "$configuredUrl/"
+        } else {
+            val isEmulator = android.os.Build.FINGERPRINT.startsWith("generic")
+                    || android.os.Build.FINGERPRINT.startsWith("unknown")
+                    || android.os.Build.MODEL.contains("google_sdk")
+                    || android.os.Build.MODEL.contains("Emulator")
+                    || android.os.Build.MODEL.contains("Android SDK built for x86")
+                    || android.os.Build.MANUFACTURER.contains("Genymotion")
+                    || android.os.Build.PRODUCT.contains("sdk_google")
+                    || android.os.Build.PRODUCT.contains("google_sdk")
+                    || android.os.Build.PRODUCT.contains("sdk")
+                    || android.os.Build.PRODUCT.contains("sdk_x86")
+                    || android.os.Build.PRODUCT.contains("vbox86p")
+                    || android.os.Build.PRODUCT.contains("emulator")
+                    || android.os.Build.PRODUCT.contains("simulator")
+            
+            if (isEmulator) {
+                "http://10.0.2.2:8000/"
+            } else {
+                "http://10.200.38.150:8000/"
+            }
+        }
     }
     
     @Volatile

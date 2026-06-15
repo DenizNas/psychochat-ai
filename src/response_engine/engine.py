@@ -53,6 +53,64 @@ class ResponseEngine:
         prompt_meta: dict = {"prompt_version": PROMPT_VERSION, "prompt_sections": [], "prompt_length": 0, "injection_guard_enabled": True}
         memory_lookup_latency = 0.0
 
+        # Determine crisis level early
+        from src.response_engine.safety import classify_crisis_level, get_custom_crisis_response
+        crisis_level = classify_crisis_level(engine_input.text, engine_input.risk)
+        
+        if crisis_level in ["high", "imminent"]:
+            logger.warning(f"ENGINE | Crisis input detected! Level: {crisis_level}. Bypassing normal chatbot flow.")
+            safe_resp = get_custom_crisis_response(crisis_level, engine_input.text)
+            safe_resp = format_response(safe_resp)
+            
+            try:
+                save_chat_message(engine_input.user_id, "user", engine_input.text)
+                save_chat_message(engine_input.user_id, "assistant", safe_resp)
+            except Exception as db_err:
+                logger.error(f"Failed to save chat history (early crisis bypass): {db_err}")
+                
+            try:
+                from src.services.database import SessionLocal
+                from src.services.compliance_service import compliance_service
+                db = SessionLocal()
+                try:
+                    compliance_service.log_security_event(
+                        db=db,
+                        user_id=engine_input.user_id,
+                        event_type="crisis_safety_triggered",
+                        ip_address="0.0.0.0",
+                        user_agent="internal",
+                        severity="WARNING",
+                        metadata={"reason": f"early_crisis_{crisis_level}", "stage": "early_check"}
+                    )
+                finally:
+                    db.close()
+            except Exception as audit_err:
+                logger.error(f"Failed to log crisis audit log: {audit_err}")
+                
+            latency = time.time() - start_time
+            
+            return EngineOutput(
+                final_text=safe_resp,
+                is_fallback=True,
+                metadata={
+                    "latency_sec": latency,
+                    "model_used": "safety_template",
+                    "final_model": "crisis_safe_template",
+                    "is_crisis": True,
+                    "crisis_level": crisis_level,
+                    "show_emergency_support": True,
+                    "emergency_phone": "112",
+                    "emergency_title": "Acil Destek",
+                    "emergency_message": "Güvende kalman öncelikli. Yalnız kalmamaya çalış ve mümkünse hemen destek al.",
+                    "safety": {
+                        "is_safe": False,
+                        "safety_reason": f"early_crisis_{crisis_level}",
+                        "injection_attempt_detected": False,
+                        "stage": "early_crisis_bypass"
+                    }
+                }
+            )
+
         # 1.5. Memory Pipeline (PersonalContextEngine — Extract → Lookup → Inject)
         # Primary engine: personal_context_engine (Faz 10 P2)
         # Crisis guard and privacy guard enforced inside process_turn.
@@ -483,6 +541,12 @@ class ResponseEngine:
                 "final_model": final_model,
                 "error": error_meta,
                 "counseling_category": prompt_meta.get("counseling_category", "neutral"),
+                "is_crisis": (crisis_level in ["high", "imminent", "medium"]),
+                "crisis_level": crisis_level,
+                "show_emergency_support": (crisis_level in ["high", "imminent"]),
+                "emergency_phone": "112" if crisis_level in ["high", "imminent"] else None,
+                "emergency_title": "Acil Destek" if crisis_level in ["high", "imminent"] else None,
+                "emergency_message": "Güvende kalman öncelikli. Yalnız kalmamaya çalış ve mümkünse hemen destek al." if crisis_level in ["high", "imminent"] else None,
                 "ranking": {
                     "primary_model_used": primary_model_used,
                     "fallback_model_used": fallback_model_used,

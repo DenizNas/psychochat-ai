@@ -29,8 +29,8 @@ class AuthViewModel(private val repository: AuthRepository, private val tokenMan
             when (val res = repository.login(user, pass)) {
                 is Resource.Success -> {
                     res.data?.let {
-                        tokenManager.saveAuthData(it.access_token, it.username)
-                        Log.d(TAG, "LOGIN | Başarılı. Token DataStore'a kaydedildi. Kullanıcı: ${it.username}")
+                        tokenManager.saveAuthData(it.access_token, it.username, it.role)
+                        Log.d(TAG, "LOGIN | Başarılı. Token DataStore'a kaydedildi. Kullanıcı: ${it.username}, Rol: ${it.role}")
                     }
                     _authState.value = Resource.Success(true)
                 }
@@ -64,8 +64,8 @@ class AuthViewModel(private val repository: AuthRepository, private val tokenMan
                     when (val loginRes = repository.login(user, pass)) {
                         is Resource.Success -> {
                             loginRes.data?.let {
-                                tokenManager.saveAuthData(it.access_token, it.username)
-                                Log.d(TAG, "REGISTER+LOGIN | Token DataStore'a kaydedildi. Kullanıcı: ${it.username}")
+                                tokenManager.saveAuthData(it.access_token, it.username, it.role)
+                                Log.d(TAG, "REGISTER+LOGIN | Token DataStore'a kaydedildi. Kullanıcı: ${it.username}, Rol: ${it.role}")
                             }
                             _authState.value = Resource.Success(true)
                         }
@@ -96,5 +96,78 @@ class AuthViewModel(private val repository: AuthRepository, private val tokenMan
             tokenManager.clearAuthData()
             resetState()
         }
+    }
+
+    // Password reset state flows
+    private val _resetRequestState = MutableStateFlow<Resource<Boolean>>(Resource.Success(false))
+    val resetRequestState: StateFlow<Resource<Boolean>> = _resetRequestState
+
+    private val _verifyCodeState = MutableStateFlow<Resource<String?>>(Resource.Success(null))
+    val verifyCodeState: StateFlow<Resource<String?>> = _verifyCodeState
+
+    private val _resetCompleteState = MutableStateFlow<Resource<Boolean>>(Resource.Success(false))
+    val resetCompleteState: StateFlow<Resource<Boolean>> = _resetCompleteState
+
+    fun requestPasswordReset(email: String) {
+        if (email.isBlank()) {
+            _resetRequestState.value = Resource.Error("E-posta adresi boş bırakılamaz")
+            return
+        }
+        viewModelScope.launch {
+            _resetRequestState.value = Resource.Loading()
+            when (val res = repository.requestPasswordReset(email)) {
+                is Resource.Success -> {
+                    _resetRequestState.value = Resource.Success(true)
+                }
+                is Resource.Error -> {
+                    _resetRequestState.value = Resource.Error(res.message ?: "İstek hatası")
+                }
+                else -> {}
+            }
+        }
+    }
+
+    fun verifyPasswordResetCode(email: String, code: String) {
+        if (email.isBlank() || code.isBlank()) {
+            _verifyCodeState.value = Resource.Error("E-posta ve doğrulama kodu boş bırakılamaz")
+            return
+        }
+        viewModelScope.launch {
+            _verifyCodeState.value = Resource.Loading()
+            when (val res = repository.verifyPasswordResetCode(email, code)) {
+                is Resource.Success -> {
+                    _verifyCodeState.value = Resource.Success(res.data?.reset_token)
+                }
+                is Resource.Error -> {
+                    _verifyCodeState.value = Resource.Error(res.message ?: "Doğrulama hatası")
+                }
+                else -> {}
+            }
+        }
+    }
+
+    fun completePasswordReset(resetToken: String, newPass: String) {
+        if (resetToken.isBlank() || newPass.isBlank()) {
+            _resetCompleteState.value = Resource.Error("Yeni şifre boş bırakılamaz")
+            return
+        }
+        viewModelScope.launch {
+            _resetCompleteState.value = Resource.Loading()
+            when (val res = repository.completePasswordReset(resetToken, newPass)) {
+                is Resource.Success -> {
+                    _resetCompleteState.value = Resource.Success(true)
+                }
+                is Resource.Error -> {
+                    _resetCompleteState.value = Resource.Error(res.message ?: "Şifre sıfırlama hatası")
+                }
+                else -> {}
+            }
+        }
+    }
+
+    fun resetResetStates() {
+        _resetRequestState.value = Resource.Success(false)
+        _verifyCodeState.value = Resource.Success(null)
+        _resetCompleteState.value = Resource.Success(false)
     }
 }

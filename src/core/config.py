@@ -30,6 +30,11 @@ class Settings(BaseModel):
     REDIS_URL: str = Field(default="redis://localhost:6379")
     CELERY_BROKER_URL: str = Field(default="redis://localhost:6379/0")
     CELERY_RESULT_BACKEND: str = Field(default="redis://localhost:6379/0")
+    SMTP_HOST: str = Field(default="smtp.gmail.com")
+    SMTP_PORT: int = Field(default=587)
+    SMTP_USERNAME: str = Field(default="")
+    SMTP_PASSWORD: str = Field(default="")
+    SMTP_FROM: str = Field(default="no-reply@psikochat.com")
     WORKER_CONCURRENCY: int = Field(default=2)
     OPENAI_API_KEY: str = Field(default="")
     JWT_EXPIRE_MINUTES: int = Field(default=10080)  # 7 Gün (10080 dakika) varsayılan
@@ -182,6 +187,11 @@ def get_settings() -> Settings:
         REDIS_URL=os.getenv("REDIS_URL", "redis://localhost:6379"),
         CELERY_BROKER_URL=os.getenv("CELERY_BROKER_URL", os.getenv("REDIS_URL", "redis://localhost:6379/0")),
         CELERY_RESULT_BACKEND=os.getenv("CELERY_RESULT_BACKEND", os.getenv("REDIS_URL", "redis://localhost:6379/0")),
+        SMTP_HOST=os.getenv("SMTP_HOST", "smtp.gmail.com"),
+        SMTP_PORT=int(os.getenv("SMTP_PORT", "587")),
+        SMTP_USERNAME=os.getenv("SMTP_USERNAME", ""),
+        SMTP_PASSWORD=os.getenv("SMTP_PASSWORD", ""),
+        SMTP_FROM=os.getenv("SMTP_FROM", "no-reply@psikochat.com"),
         WORKER_CONCURRENCY=int(os.getenv("WORKER_CONCURRENCY", "2")),
         OPENAI_API_KEY=os.getenv("OPENAI_API_KEY", ""),
         JWT_EXPIRE_MINUTES=os.getenv("JWT_EXPIRE_MINUTES", "10080"),

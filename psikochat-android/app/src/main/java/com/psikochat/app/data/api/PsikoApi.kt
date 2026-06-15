@@ -148,4 +148,60 @@ interface PsikoApi {
 
     @PUT("/appointments/{appointment_id}/cancel")
     suspend fun cancelAppointment(@retrofit2.http.Path("appointment_id") appointmentId: Int): Map<String, String>
+
+    @GET("/psychologists/me/availability")
+    suspend fun getMyAvailability(): List<AvailabilityDto>
+
+    @POST("/psychologists/me/availability")
+    suspend fun createAvailability(@Body request: CreateAvailabilityRequest): AvailabilityDto
+
+    @PUT("/psychologists/me/availability/{availability_id}")
+    suspend fun updateAvailability(
+        @retrofit2.http.Path("availability_id") availabilityId: Int,
+        @Body request: UpdateAvailabilityRequest
+    ): AvailabilityDto
+
+    @DELETE("/psychologists/me/availability/{availability_id}")
+    suspend fun deleteAvailability(
+        @retrofit2.http.Path("availability_id") availabilityId: Int
+    ): Map<String, String>
+
+    @GET("/psychologists/{psychologist_id}/available-slots")
+    suspend fun getAvailableSlots(
+        @retrofit2.http.Path("psychologist_id") psychologistId: Int,
+        @retrofit2.http.Query("date") date: String
+    ): AvailableSlotsResponse
+
+    // ── Admin psychologist approval management endpoints ──
+    @GET("/admin/psychologists/pending")
+    suspend fun getPendingPsychologists(
+        @retrofit2.http.Header("Authorization") authHeader: String
+    ): List<AdminPsychologist>
+
+    @GET("/admin/psychologists/all")
+    suspend fun getAllPsychologists(
+        @retrofit2.http.Header("Authorization") authHeader: String
+    ): List<AdminPsychologist>
+
+    @POST("/admin/psychologists/{username}/approve")
+    suspend fun approvePsychologist(
+        @retrofit2.http.Path("username") username: String,
+        @retrofit2.http.Header("Authorization") authHeader: String
+    ): Map<String, String>
+
+    @POST("/admin/psychologists/{username}/reject")
+    suspend fun rejectPsychologist(
+        @retrofit2.http.Path("username") username: String,
+        @retrofit2.http.Header("Authorization") authHeader: String
+    ): Map<String, String>
+
+    @POST("/auth/password-reset/request")
+    suspend fun requestPasswordReset(@Body request: PasswordResetRequest): Map<String, String>
+
+    @POST("/auth/password-reset/verify")
+    suspend fun verifyPasswordResetCode(@Body request: PasswordResetVerifyRequest): PasswordResetVerifyResponse
+
+    @POST("/auth/password-reset/complete")
+    suspend fun completePasswordReset(@Body request: PasswordResetCompleteRequest): Map<String, String>
 }
+

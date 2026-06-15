@@ -12,7 +12,8 @@ data class RegisterRequest(
 data class AuthResponse(
     @SerializedName("access_token") val access_token: String,
     @SerializedName("token_type") val token_type: String,
-    @SerializedName("username") val username: String
+    @SerializedName("username") val username: String,
+    @SerializedName("role") val role: String? = null
 )
 data class RegisterResponse(
     @SerializedName("message") val message: String
@@ -47,7 +48,8 @@ data class ProfileResponse(
     @SerializedName("privacy_mode") val privacyMode: Boolean,
     @SerializedName("answer_length_preference") val answerLengthPreference: String,
     @SerializedName("created_at") val createdAt: String,
-    @SerializedName("updated_at") val updatedAt: String
+    @SerializedName("updated_at") val updatedAt: String,
+    @SerializedName("role") val role: String? = null
 )
 
 data class UpdateProfileRequest(
@@ -254,3 +256,32 @@ data class RecommendationRefreshResponse(
 data class RecommendationFeedbackRequest(
     @SerializedName("feedback") val feedback: String  // "helpful" | "not_helpful" | "dismissed"
 )
+
+data class AdminPsychologist(
+    @SerializedName("username") val username: String,
+    @SerializedName("full_name") val fullName: String?,
+    @SerializedName("email") val email: String?,
+    @SerializedName("title") val title: String,
+    @SerializedName("specialty") val specialty: String,
+    @SerializedName("status") val status: String,
+    @SerializedName("created_at") val createdAt: String
+)
+
+data class PasswordResetRequest(
+    @SerializedName("email") val email: String
+)
+
+data class PasswordResetVerifyRequest(
+    @SerializedName("email") val email: String,
+    @SerializedName("code") val code: String
+)
+
+data class PasswordResetVerifyResponse(
+    @SerializedName("reset_token") val reset_token: String
+)
+
+data class PasswordResetCompleteRequest(
+    @SerializedName("reset_token") val reset_token: String,
+    @SerializedName("new_password") val new_password: String
+)
+

@@ -12,7 +12,8 @@ import java.io.IOException
 
 class AppointmentRepository(
     private val api: PsikoApi,
-    private val appointmentDao: AppointmentDao
+    private val appointmentDao: AppointmentDao,
+    private val context: android.content.Context
 ) {
 
     fun getNextUpcomingAppointment(): Flow<CachedAppointment?> {
@@ -36,7 +37,7 @@ class AppointmentRepository(
         return try {
             val appt = api.createAppointment(CreateAppointmentRequest(psychologistUsername, date, time))
             try {
-                appointmentDao.insertAppointment(CachedAppointment(
+                val cached = CachedAppointment(
                     id = appt.id,
                     psychologistName = appt.psychologistName ?: psychologistUsername,
                     psychologistSpecialty = appt.psychologistSpecialty ?: "",
@@ -44,7 +45,9 @@ class AppointmentRepository(
                     appointmentTime = appt.appointmentTime,
                     status = appt.status,
                     createdAt = appt.createdAt ?: ""
-                ))
+                )
+                appointmentDao.insertAppointment(cached)
+                com.psikochat.app.ui.notification.NotificationScheduler.scheduleAppointmentReminder(context, cached)
             } catch (e: Exception) {
                 // Ignore Room cache write issues
             }
@@ -59,7 +62,7 @@ class AppointmentRepository(
             val list = api.getAppointments()
             try {
                 for (appt in list) {
-                    appointmentDao.insertAppointment(CachedAppointment(
+                    val cached = CachedAppointment(
                         id = appt.id,
                         psychologistName = appt.psychologistName ?: (appt.patientName ?: "Danışan"),
                         psychologistSpecialty = appt.psychologistSpecialty ?: "",
@@ -67,7 +70,13 @@ class AppointmentRepository(
                         appointmentTime = appt.appointmentTime,
                         status = appt.status,
                         createdAt = appt.createdAt ?: ""
-                    ))
+                    )
+                    appointmentDao.insertAppointment(cached)
+                    if (cached.status == "scheduled") {
+                        com.psikochat.app.ui.notification.NotificationScheduler.scheduleAppointmentReminder(context, cached)
+                    } else {
+                        com.psikochat.app.ui.notification.NotificationScheduler.cancelAppointmentReminder(context, cached.id)
+                    }
                 }
             } catch (e: Exception) {
                 // Ignore cache update issues
@@ -83,6 +92,7 @@ class AppointmentRepository(
             api.cancelAppointment(appointmentId)
             try {
                 appointmentDao.updateAppointmentStatus(appointmentId, "cancelled")
+                com.psikochat.app.ui.notification.NotificationScheduler.cancelAppointmentReminder(context, appointmentId)
             } catch (e: Exception) {
                 // Ignore cache update issues
             }

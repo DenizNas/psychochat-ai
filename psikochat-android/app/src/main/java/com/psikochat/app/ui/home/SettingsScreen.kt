@@ -46,6 +46,7 @@ fun SettingsScreen(navController: NavController, tokenManager: TokenManager) {
     
     val profileState by viewModel.profileState.collectAsState()
     val updateState by viewModel.updateState.collectAsState()
+    val userRole by tokenManager.getRole().collectAsState(initial = "user")
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -139,11 +140,11 @@ fun SettingsScreen(navController: NavController, tokenManager: TokenManager) {
                         ) {
                             Text("Tercihler ve Gizlilik", fontWeight = FontWeight.Bold, color = LoginTextColor, modifier = Modifier.padding(bottom = 8.dp))
                             
-                            SettingSwitchItem(
+                            SettingClickItem(
                                 Icons.Default.Notifications, 
                                 "Bildirimler", 
-                                profile.notificationsEnabled
-                            ) { viewModel.updateProfile(notifications = it) }
+                                null
+                            ) { navController.navigate("notification_settings") }
                             
                             Divider(color = Color.LightGray.copy(alpha = 0.3f), modifier = Modifier.padding(vertical = 8.dp))
                             
@@ -228,6 +229,21 @@ fun SettingsScreen(navController: NavController, tokenManager: TokenManager) {
                                 Icon(Icons.Default.ExitToApp, contentDescription = null, tint = Color.Red)
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Text("Oturumu Kapat", color = Color.Red, fontWeight = FontWeight.Medium)
+                            }
+                        }
+
+                        if (userRole == "admin") {
+                            Spacer(modifier = Modifier.height(24.dp))
+                            PremiumCard(
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Admin İşlemleri", fontWeight = FontWeight.Bold, color = LoginTextColor, modifier = Modifier.padding(bottom = 8.dp))
+                                
+                                SettingClickItem(
+                                    Icons.Default.Build, 
+                                    "Psikolog Başvuruları", 
+                                    null
+                                ) { navController.navigate("admin_psychologists") }
                             }
                         }
                         
