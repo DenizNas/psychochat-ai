@@ -52,7 +52,7 @@ EVALUATION_PROMPTS = {
     ],
     "neutral": [
         "Bugün sıradan bir gündü, pek bir şey yapmadım.",
-        "Bugün biraz kararsızım, ne yapacağımı bilemedim."
+        "Bilmiyorum, sadece konuşmak istedim."
     ]
 }
 

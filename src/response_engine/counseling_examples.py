@@ -1,5 +1,5 @@
 import random
-from typing import List, Dict
+from typing import List, Dict, Optional
 from src.ai.preprocessing import turkish_lower
 
 # 10 categories as requested:
@@ -226,44 +226,66 @@ def categorize_input(text: str, emotion: str) -> str:
             "üzgünüm", "üzüldüm", "ağlıyorum", "korkuyorum", "öfkeliyim",
             "sinirli", "kaygılı", "bunaldım", "yoruldum", "depresyon",
             "suçlu", "suçluyum", "utanç", "utanıyorum", "pişmanım", "pişman",
-            "belirsiz", "kararsız", "kararsızım",
+            "belirsiz", "kararsız", "kararsızım", "ne yapacağımı", "ne yapsam", "bilmiyorum",
+            "yönünü", "yönümü",
+            # Sprint 7.4: problem_solving short triggers
+            "seçmeliyim", "seçeneği", "kararımı", "hangişi", "seçeyim",
+            "neyi seç", "hangisi",
+            # Sprint 7.4: self_reflection short triggers
+            "anlamıyorum", "çözemedim", "sürekli", "tekrar tekrar",
+            # Loneliness / isolation short messages (e.g. 'yalnızım', 'yalnız hissediyorum')
+            "yalnız", "kimsem", "yapayalnız",
+            # Sprint 7.5: social withdrawal / isolation short triggers
+            # e.g. 'kimseyle konuşmak istemiyorum' (exactly 3 words)
+            "kimseyle", "konuşmak istemiyorum", "istemiyorum", "uzaklaş", "içine kapan",
+            "insanlardan", "dışarı çıkmak", "yalnız kalmak",
         }
         if not any(exc in clean_text for exc in _SHORT_EMOTIONAL_EXCEPTIONS):
             return "neutral"
 
-    # 1. Keyword checks
-    if any(k in clean_text for k in ["yalnız", "kimsem yok", "kimse yok", "tek başın", "yalnızlık", "yapayalnız", "arkadaşım yok", "dışlan"]):
-        return "loneliness"
-        
-    if any(k in clean_text for k in ["motivasyon", "heves", "isteksiz", "hiçbir şey yapmak", "canım istemiyor", "tükenmiş", "üşen", "bık", "odaklanamıyorum", "hedef"]):
-        return "motivation_loss"
-        
-    if any(k in clean_text for k in ["sevgili", "arkadaş", "eşim", "kocam", "karım", "ilişki", "kavga", "ayrıl", "terk", "aldat", "kızdı", "partner", "aile", "annem", "babam", "kardeş", "aram bozul", "aramız bozul"]):
-        return "relationship_problems"
-        
-    if any(k in clean_text for k in ["özgüven", "kendime güven", "güvenmiyorum", "güvenemiyorum", "yetersiz", "çirkin", "beceriksiz", "başarısız", "kendimden nefret", "beğenmi", "kıyasla", "kusur"]):
-        return "self_esteem_issues"
-        
-    if any(k in clean_text for k in ["stres", "baskı", "yetiş", "sınav", "ders", "iş yoğun", "yorgun", "bunald", "yük", "gergin", "aksilik", "yorul"]):
-        return "stress"
 
-    if any(k in clean_text for k in ["suçluluk", "suçlu", "pişman", "utanç", "utanıyorum", "utandım", "kendimi suçluyorum", "vicdan azabı"]):
-        return "guilt_shame"
-
-    if any(k in clean_text for k in ["belirsiz", "kararsız", "ne yapacağımı bilmiyorum", "emin değilim", "arada kaldım", "kararsızım", "net değil", "yönümü", "yolumu şaşırd"]):
-        return "uncertainty"
-        
-    if any(k in clean_text for k in ["üzgün", "üzül", "hüzün", "buruk", "mutsuz", "ağla", "keder", "acı", "depresyon"]):
-        return "sadness"
+    # 1. Keyword checks (Specific emotions prioritize over general context/themes)
+    if any(k in clean_text for k in ["kork", "ürk", "dehşet"]):
+        return "fear"
         
     if any(k in clean_text for k in ["endişe", "kaygı", "panik", "evham", "huzursuz", "sıkış"]):
         return "anxiety"
         
-    if any(k in clean_text for k in ["kork", "ürk", "dehşet"]):
-        return "fear"
-        
     if any(k in clean_text for k in ["öfke", "sinir", "kızgın", "çıldır", "katlanamıy"]):
         return "anger"
+
+    if any(k in clean_text for k in [
+        "yalnız", "kimsem yok", "kimse yok", "tek başın", "yalnızlık", "yapayalnız",
+        "arkadaşım yok", "dışlan",
+        # Sprint 7.5: social withdrawal / isolation phrases
+        "kimseyle konuşmak istemiyorum", "kimseyle konuşmak", "kimseyle görüşmek istemiyorum",
+        "insanlardan uzaklaş", "insanlardan kaç", "içime kapandım", "içine kapandım",
+        "dışarı çıkmak istemiyorum", "yalnız kalmak istiyorum", "kapanmak istiyorum",
+    ]):
+        return "loneliness"
+
+    if any(k in clean_text for k in ["suçluluk", "suçlu", "pişman", "utanç", "utanıyorum", "utandım", "kendimi suçluyorum", "vicdan azabı"]):
+        return "guilt_shame"
+
+    if any(k in clean_text for k in ["motivasyon", "heves", "isteksiz", "hiçbir şey yapmak", "canım istemiyor", "tükenmiş", "üşen", "bık", "odaklanamıyorum", "hedef"]):
+        return "motivation_loss"
+
+    if any(k in clean_text for k in ["sevgili", "arkadaş", "eşim", "kocam", "karım", "ilişki", "kavga", "ayrıl", "terk", "aldat", "kızdı", "partner", "aile", "annem", "babam", "kardeş", "aram bozul", "aramız bozul"]):
+        return "relationship_problems"
+
+    if any(k in clean_text for k in ["özgüven", "kendime güven", "güvenmiyorum", "güvenemiyorum", "yetersiz", "çirkin", "beceriksiz", "başarısız", "kendimden nefret", "beğenmi", "kıyasla", "kusur"]):
+        return "self_esteem_issues"
+
+    if any(k in clean_text for k in ["stres", "baskı", "yetiş", "sınav", "ders", "iş yoğun", "yorgun", "bunald", "yük", "gergin", "aksilik", "yorul"]):
+        return "stress"
+
+    if any(k in clean_text for k in ["belirsiz", "kararsız", "ne yapacağımı bilmiyorum", "emin değilim", "arada kaldım", "kararsızım", "net değil", "yönünü", "yönümü", "yolumu şaşırd", "seçenek", "arasında kaldım",
+                                      # Sprint 7.4: problem_solving suffixed forms
+                                      "seçeneğ", "hangisi", "neyi seç", "seçmeliyim", "seçebilir", "kararımı"]):
+        return "uncertainty"
+
+    if any(k in clean_text for k in ["üzgün", "üzül", "hüzün", "buruk", "mutsuz", "ağla", "keder", "acı", "depresyon", "keyif al", "zevk al"]):
+        return "sadness"
         
     # 2. Fallback to emotion
     emo_lower = turkish_lower(emotion or "neutral")
@@ -279,3 +301,57 @@ def get_few_shot_examples(text: str, emotion: str, num_examples: int = 2) -> Lis
     # Safely sample unique examples
     sampled = random.sample(examples, min(num_examples, len(examples)))
     return sampled
+
+def detect_emotion_subtype(text: str, primary_emotion: str) -> Optional[str]:
+    """
+    Detects the subtype of the primary emotion based on keyword rules.
+    Returns None if no subtype matches or if the primary emotion has no subtypes.
+    """
+    clean_text = turkish_lower(text or "").strip()
+    primary = primary_emotion.strip().lower()
+
+    if primary == "sadness":
+        if any(k in clean_text for k in ["tükendim", "tükenmiş", "tükenmişlik", "bık", "bıktım", "aşırı yoruldum", "kronik yorgun", "tükeniyorum", "tükendim artık"]):
+            return "burnout"
+        if any(k in clean_text for k in ["keyif alamıyorum", "zevk alamıyorum", "tatsız", "hiçbir şeyden keyif", "zevk alamaz oldum", "tadı yok", "keyif al"]):
+            return "anhedonia"
+        if any(k in clean_text for k in ["kayıp", "kaybettim", "vefat", "ölüm", "öldü", "yas", "acısı", "bırakıp gitti"]):
+            return "grief"
+        if any(k in clean_text for k in ["hiçbir şey düzelmeyecek", "umudum kalmadı", "umutsuz", "çaresiz", "anlamı yok", "geçmeyecek", "hiçbir şeyin anlamı", "boşuna"]):
+            return "hopelessness"
+        if any(k in clean_text for k in ["hayal kırıklığı", "beklentim boşa", "beklemezdim", "umduğumu bulamadım", "yanıldım"]):
+            return "disappointment"
+
+    elif primary == "anxiety":
+        if any(k in clean_text for k in ["sınav", "vize", "final", "test", "yks", "lgs", "ösym", "yazılı", "sınavım", "sınavımdan"]):
+            return "exam_anxiety"
+        if any(k in clean_text for k in ["sunum", "sahne", "topluluk önünde", "başaramayacağım", "rezil ol", "beceremeye", "performans", "mülakat", "iş görüşmesi"]):
+            return "performance_anxiety"
+        if any(k in clean_text for k in ["insanlar", "topluluk", "sosyal", "başkaları", "yabancılar", "konuşmaktan çekin", "utangaç", "rezil olacağım"]):
+            return "social_anxiety"
+        if any(k in clean_text for k in ["sürekli", "her şey için", "genel", "sebepsiz", "durduk yere", "her an", "kaygılıyım", "evham", "panik"]):
+            return "generalized_anxiety"
+
+    elif primary == "fear":
+        if any(k in clean_text for k in ["başarısız", "kaybetmek", "yenilmek", "yapamayacağım", "hata yap", "yanlış yap"]):
+            return "failure_fear"
+        if any(k in clean_text for k in ["reddedil", "istenme", "sevilme", "terk", "dışlan", "kabul görme"]):
+            return "rejection_fear"
+        if any(k in clean_text for k in ["gelecek", "sonra ne", "yarınlar", "önümü göremi", "belirsizlik kork", "yaşlanmak"]):
+            return "future_fear"
+        if any(k in clean_text for k in ["hastalık", "kanser", "ölüm korkusu", "sağlığım", "sağlık", "hasta olmak", "kalp krizi", "virüs", "enfeksiyon"]):
+            return "health_fear"
+
+    elif primary == "guilt_shame":
+        if any(k in clean_text for k in ["suçlu", "suçluluk", "vicdan azabı", "pişman", "keşke yapmasaydım", "benim yüzümden", "hata ettim"]):
+            return "guilt"
+        if any(k in clean_text for k in ["utanç", "utanıyorum", "utandım", "rezil", "yerin dibine", "başkalarının yüzüne"]):
+            return "shame"
+
+    elif primary == "uncertainty":
+        if any(k in clean_text for k in ["yönümü", "yolumu şaşırd", "nereye gide", "hayatımın anlamı", "neye yarar", "boşluktayım", "yönünü kaybettim", "hayatımın yönünü"]):
+            return "life_direction_uncertainty"
+        if any(k in clean_text for k in ["kararsız", "ne yapacağımı", "seç", "karar ver", "yol ayrımı", "hangisini", "seçenek", "iki arada"]):
+            return "decision_uncertainty"
+
+    return None

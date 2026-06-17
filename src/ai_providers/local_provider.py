@@ -54,6 +54,11 @@ _CATEGORY_TEMPLATES = {
         "İçindeki bu yoğun ağırlığı ve üzüntüyü hissetmen son derece anlaşılır. Üzüntü bazen ruhsal enerjimizi aşağı çekerek bizi kabuğumuza çekilmeye zorlar; bu aslında zihnimizin ve bedenimizin dinlenme ihtiyacıdır. Kendini suçlamadan beklentilerini biraz düşürmek ve belki sadece pencerenden dışarı bakıp derin bir nefes almak iyi gelebilir. İstersen bu ağır hissin en çok hangi anlarda yoğunlaştığına birlikte bakalım?",
         "Bu günlerde hissettiğin o ağır yükü paylaştığın için teşekkür ederim. Hüzün hissi enerjimizi aşağı çekerek bizi yavaşlatır; bu durum ruhsal enerjimizi koruma çabasıdır. Bugün kendine hiç yüklenmeden, sadece yataktan çıkıp yüzünü yıkamak veya ılık bir bardak su içmek gibi tek bir küçük adımla başlayabilirsin. Son günlerde seni bu kadar yorgun hissettiren, enerjini tüketen belirli bir olay oldu mu?"
     ],
+    "anhedonia": [
+        "Hiçbir şeyden keyif alamıyor olmak, insanın içindeki ilginin ve enerjinin yavaş yavaş çekilmiş gibi hissettirmesine neden olabilir; eskiden anlam taşıyan şeyler şimdi renksiz ve boş duruyorsa, bu his gerçekten ağır bir iç boşluk yaratabilir.\n\nBu çoğu zaman tembellikten ya da isteksizlikten değil, zihnin ve bedenin bir süredir çok yoğun çalışmasının ya da taşınan yükün ağırlığının bir yansıması olabilir; keyif kapasitesi bazen bu yük altında geçici olarak kapanabiliyor.",
+        "Eskiden zevk aldığın şeylerin artık hiçbir şey hissettirmemesi, sanki dünyanın renklerinin solmuş gibi görünmesi son derece yorucu bir his; bu içsel boşluğu ve bağlantısızlığı hissetmen çok anlaşılır.\n\nBu durum kişisel bir zayıflıktan ya da çaba eksikliğinden değil, zihin ve bedenin yoğun bir süreçten geçerken kendini koruma biçiminden kaynaklanıyor olabilir; ilginin ve enerjinin bu şekilde geri çekilmesi, içinin bir nefes alma ihtiyacının sessiz bir işareti olabilir."
+    ],
+
     "anxiety": [
         "Zihninin ve bedeninin bu denli gerilmesi ve sıkışması son derece anlaşılır bir durum. Zihnimiz gelecekte bir tehdit sezinlediğinde vücudumuz bizi korumak için alarm tepkisi verir; kalbin hızlı atması ve nefes daralması bundandır. Şimdi sadece bulunduğun yerdeki sert bir yüzeye dokunmayı ve burnundan alıp ağzından yavaşça vereceğin birkaç nefesle bedeni şimdiye getirmeyi dener misin? Şu an zihnini en çok hangi düşüncenin sıkıştırdığını paylaşmak ister misin?",
         "Göğsündeki o daralma hissini duyabiliyorum, zihninin yoğun bir kaygı içinde olması çok yorucu olabilir. Zihnimiz en kötü ihtimalleri sıralayarak kendini korumaya çalışır ve bu da bedende kasılma yaratır. Şimdi sakinleşmeye zorlamadan, odada gördüğün üç basit nesneyi içinden sessizce adlandırıp omuzlarını yavaşça düşürmeyi dener misin? Bu kaygıyı en çok neyin tırmandırdığını hissettin?"
@@ -98,12 +103,48 @@ _CATEGORY_TEMPLATES = {
         "Merhaba, buradayım. Bugün nasıl hissettiğini paylaşmak ister misin?",
         "Seni dinlemeye ve paylaşmak istediğin her ne varsa eşlik etmeye hazırım. Kendini nasıl hissediyorsun?",
         "Zihninden geçenleri acele etmeden kendi hızında anlatabilirsin. Burası senin için güvenli bir paylaşım alanı."
+    ],
+    "self_reflection": [
+        "Bu soruyu sorman aslında kendini anlamaya çalıştığını gösteriyor; bu çok değerli bir farkındalık. Bazen hep aynı hislerin tekrarlandığını fark etmek, içimizde derin bir anlam arayışının başladığının işareti olabilir — bu hissin kökeninde yatan şeyleri birlikte mercek altına almak mümkün.\n\nPeki bu his sende en yoğun olarak hangi anlarda ya da hangi ilişkilerde kendini gösteriyor?",
+        "Bu soruyu sorabilmen, kendini tanıma yolculuğunda önemli bir adım. Hep aynı örüntünün tekrarlandığını fark etmek can sıkıcı olabilir; ama bu döngüye dikkat etmen, onun içinde kaybolmak yerine onu gözlemleyebilmeni sağlıyor.\n\nSence bu his sende en çok hangi durumlarda ya da ne tür ilişkilerde öne çıkıyor?",
+        "Bu soruyu sormak, içindeki bir şeyi anlamlandırma isteğinin göstergesi. Bazen aynı duygunun tekrar tekrar gelmesi, zihnin çözmek istediği bir iç çatışmanın işareti olabilir; bu hissin arkasında yatan inancı veya beklentiyi anlamak, döngüyü kırmada ilk adım olabilir.\n\nBu hissin en güçlü hissettirdiği an ya da bağlam ne?"
+    ],
+    "problem_solving": [
+        "İki seçenek arasında kalmak yorucu olabilir; zihnin her iki tarafı da tartarken belirsizlik gerçekten ağır bir his yaratır.\n\nKarar vermeyi kolaylaştırmak için şunu deneyebiliriz: Her iki seçeneğin sana kazandıracakları ve kaybettireceği şeyleri kısaca düşünelim — hangisi senin için daha önemli olan değere daha yakın?",
+        "Arada kalmak zihni yoran bir durum; iki seçenek arasında kalmak insanı felç edebilir.\n\nBiraz yapı ekleyelim: Bu iki seçenekten hangisi seni daha çok zorlayacak, hangisi seni uzun vadede daha iyi hissettireceğini düşünüyorsun? Ya da bu kararı en çok hangi değerini esas alarak vermek istersin?",
+        "Bu ikilemde kalmak zihinsel bir ağırlık yaratabilir; her iki seçeneği de zihinde tutmak çok enerji tüketir.\n\nŞöyle bir çerçeve deneyelim: Eğer her iki seçeneğin artısını ve eksisini bir kağıda yazacak olsaydın, hangisi öne çıkardı? Ya da hangisi daha çok seni sen yapan değerlerle örtüşüyor?"
+    ]
+}
+
+# Empathic multi-turn pattern fallbacks (Sprint 7.5)
+_PATTERN_TEMPLATES = {
+    "withdrawal_pattern": [
+        "Son birkaç mesajında hem keyifsizlikten hem de insanlardan uzaklaşma isteğinden söz ettiğini fark ediyorum. Kendi kabuğuna çekilmek bazen zihninin bir dinlenme ihtiyacı olabilir; kendini zorlamadan, bu durum hakkında konuşmak ister misin?",
+        "Dikkatimi çeken şey, son mesajlarında hem etkinliklerden keyif alamama hem de çevrenden uzaklaşma eğiliminin birlikte öne çıkması. Bu uzaklaşma isteğinin arkasındaki hisleri acele etmeden benimle paylaşabilirsin."
+    ],
+    "anxiety_spiral": [
+        "Mesajlarında sınav ve başarısızlık korkusunun tekrar tekrar öne çıktığını görüyorum. Bu tür kaygı sarmalları zihnimizi sürekli olumsuz senaryolarla doldurabilir; şimdi biraz durup derin nefes alarak bedeni rahatlatmayı deneyelim mi?",
+        "Son konuşmalarımızda başarısız olma endişesinin ve bunu sürekli düşünme halinin bir kısırdöngüye dönüştüğünü fark ediyorum. Bu kaygının zihnini en çok hangi anlarda sıkıştırdığını konuşmak ister misin?"
+    ],
+    "uncertainty_cycle": [
+        "Son konuşmalarında yönünü bulmakta zorlandığından birkaç kez söz ettin. Hayatın belirsizlikleri karşısında ne yapacağını bilememek ve kararsızlık hissi insanı gerçekten yorabilir; istersen bu karmaşayı ufak adımlarla birlikte ele alalım?",
+        "Dikkatimi çeken şey, son mesajlarında yönünü kaybetmiş olma ve kararsızlık hissinin tekrarlanması. Büyük resmi çözmeye çalışmadan, şu an kontrolünde olan en küçük şeyin ne olduğunu konuşalım mı?"
+    ],
+    "self_worth_loop": [
+        "Son birkaç mesajında kendini sorgulama veya yetersizlik hissinin tekrar ettiğini fark ediyorum. İçsel eleştirmenimizin sesinin bu kadar öne çıkması ve kendini başarısız görmen çok yorucu olabilir; kendine karşı biraz daha yumuşak olmak ister misin?",
+        "Mesajlarında tekrar eden bir tema görüyorum: kendini eksik ya da yetersiz hissetme eğilimi. Hatalar yapabilen bir insan olduğunu kabul etmek ve kendine şefkatle yaklaşmak bu döngüyü kırmaya yardımcı olabilir."
+    ],
+    "social_disconnection_pattern": [
+        "Son birkaç mesajında bağlantı kurmanın zorluğundan ya da yalnızlık hissinden tekrar tekrar söz ettin. İnsanlarla derin bağlar kurmakta güçlük çekmek ve izole hissetmek anlaşılır bir durum; bu yalnızlık hissini biraz paylaşmak ister misin?",
+        "Dikkatimi çeken şey, son mesajlarında yalnızlık ve dışlanmışlık hissinin sıkça tekrarlanması. Sosyal kopukluk hissettiğinde çevrendekilerle ufacık, zahmetsiz bir temas kurmak iyi gelebilir; ne hissettiğini paylaşmak ister misin?"
     ]
 }
 
 # Mapping of raw user query keywords to fallback category
 _KEYWORD_TO_CATEGORY = {
     "üzg": "sadness", "keder": "sadness", "ağla": "sadness", "acı": "sadness", "mutsuz": "sadness",
+    "keyif alamıyorum": "anhedonia", "zevk alamıyorum": "anhedonia", "hiçbir şeyden keyif": "anhedonia",
+    "hiçbir şey hissettirmiyor": "anhedonia", "zevk alamaz oldum": "anhedonia",
     "kaygı": "anxiety", "endişe": "anxiety", "stres": "stress", "kork": "fear", "panik": "anxiety",
     "öfke": "anger", "kızgın": "anger", "delir": "anger", "sinir": "anger",
     "yalnız": "loneliness", "kimsem": "loneliness",
@@ -112,7 +153,14 @@ _KEYWORD_TO_CATEGORY = {
     "ilişki": "relationship_problems", "sevgili": "relationship_problems", "arkadaş": "relationship_problems",
     "kendime güven": "self_esteem_issues", "özgüven": "self_esteem_issues",
     "suçlu": "guilt_shame", "pişman": "guilt_shame", "utanç": "guilt_shame", "utan": "guilt_shame",
-    "belirsiz": "uncertainty", "kararsız": "uncertainty", "ne yapacağ": "uncertainty"
+    "belirsiz": "uncertainty", "kararsız": "uncertainty", "ne yapacağ": "uncertainty",
+    # Sprint 7.4: self_reflection & problem_solving keywords
+    "neden hep böyle": "self_reflection", "neden böyleyim": "self_reflection",
+    "kendimi anlamıyorum": "self_reflection", "kendimi çözemedim": "self_reflection",
+    "kendimi sorguluyorum": "self_reflection", "neden sürekli": "self_reflection",
+    "iki seçenek arasında": "problem_solving", "hangi seçeneği": "problem_solving",
+    "karar veremiyorum": "problem_solving", "kararımı veremiyorum": "problem_solving",
+    "hangisi daha mantıklı": "problem_solving", "neyi seçmeliyim": "problem_solving",
 }
 
 class LocalProvider(BaseAIProvider):
@@ -169,17 +217,23 @@ class LocalProvider(BaseAIProvider):
                 fallback_used=True
             )
 
-        # 1. Determine counseling category based on model_config metadata, or infer from user text
+        # 1. Determine counseling category based on model_config metadata, or infer from user text.
+        # If a subtype is provided and maps to a dedicated template, prefer the subtype template.
+        subtype_from_config = (model_config.get("counseling_subtype") or "").strip().lower() if model_config else ""
         category = model_config.get("counseling_category")
         if not category:
             category = "neutral"
-            # Try to infer via keyword matching
-            for keyword, cat in _KEYWORD_TO_CATEGORY.items():
+            # Try to infer via keyword matching (longer phrases first for accuracy)
+            for keyword, cat in sorted(_KEYWORD_TO_CATEGORY.items(), key=lambda x: -len(x[0])):
                 if keyword in user_actual_text_lower:
                     category = cat
                     break
         elif category not in _CATEGORY_TEMPLATES:
             category = "neutral"
+
+        # Override category with subtype-specific template if one exists
+        if subtype_from_config and subtype_from_config in _CATEGORY_TEMPLATES:
+            category = subtype_from_config
 
         # If still not found, fallback to neutral
         if category not in _CATEGORY_TEMPLATES:
@@ -264,12 +318,174 @@ class LocalProvider(BaseAIProvider):
                 template_text = templates[idx]
                 personalized_text = f"{display_name}, {template_text[0].lower() + template_text[1:]}"
 
+        # 1.6. Conversation Pattern Priority Routing (Sprint 7.5)
+        # ---------------------------------------------------------------
+        # When a high-confidence multi-turn emotional pattern is detected
+        # (passed in via model_config["conversation_pattern"]), use the
+        # pattern-specific continuity acknowledgement template from
+        # _PATTERN_TEMPLATES, overriding both the category template and
+        # any personalization text.
+        #
+        # This ensures the LocalProvider acknowledges emotional continuity
+        # (e.g. withdrawal_pattern → "Son birkaç mesajında hem keyifsizlikten...")
+        # even when the CURRENT turn's text alone categorises as neutral/loneliness.
+        #
+        # Priority:   pattern template  >  personalized text  >  category template
+        _PATTERN_CONFIDENCE_THRESHOLD = 0.70
+        _conv_pattern = (model_config.get("conversation_pattern") or {}) if model_config else {}
+        _local_pattern_name = (_conv_pattern.get("pattern_name") or "none")
+        _local_pattern_confidence = float(_conv_pattern.get("confidence", 0.0))
+        _local_pattern_hit_count = int(_conv_pattern.get("hit_count", 0))
+
+        if (
+            _local_pattern_name
+            and _local_pattern_name != "none"
+            and _local_pattern_confidence >= _PATTERN_CONFIDENCE_THRESHOLD
+            and _local_pattern_hit_count >= 2
+            and _local_pattern_name in _PATTERN_TEMPLATES
+        ):
+            _pattern_tpls = _PATTERN_TEMPLATES[_local_pattern_name]
+            _p_idx = len(last_message) % len(_pattern_tpls)
+            personalized_text = _pattern_tpls[_p_idx]
+            logger.debug(
+                "LOCAL_PROVIDER | Conversation pattern routing | pattern=%s confidence=%.2f",
+                _local_pattern_name,
+                _local_pattern_confidence,
+            )
+
         if personalized_text:
             response_text = personalized_text
         else:
             templates = _CATEGORY_TEMPLATES[category]
             idx = len(last_message) % len(templates)
             response_text = templates[idx]
+
+        # 1.8. Adjust response_text based on the intent / strategy if category is not neutral
+        intent = model_config.get("intent") if model_config else None
+        strategy = model_config.get("counseling_strategy") if model_config else None
+        
+        if category != "neutral":
+            if intent:
+                sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', response_text) if s.strip()]
+                if sentences:
+                    validation_part = sentences[0]
+                    normalization_part = sentences[1] if len(sentences) > 1 else sentences[0]
+                    
+                    # Find the question sentence (if any)
+                    question_part = ""
+                    for s in reversed(sentences):
+                        if s.endswith("?"):
+                            question_part = s
+                            break
+                    
+                    if intent == "emotional_expression":
+                        p1 = validation_part
+                        p2 = normalization_part
+                        
+                        # Clean up advice/action keywords from p1 and p2 to guarantee validation-focus
+                        for kw in ["öneririm", "deneyebilirsin", "şunu yap", "adım at", "iletişime geç", "deneyebilir", "yapabilirsin", "yapabilir", "adım", "egzersiz"]:
+                            p1 = p1.replace(kw, "")
+                            p2 = p2.replace(kw, "")
+                        
+                        p1 = re.sub(r'\s+', ' ', p1).strip()
+                        p2 = re.sub(r'\s+', ' ', p2).strip()
+
+                        # Guard: when the template has only 2 sentences, the second
+                        # sentence is simultaneously normalization_part (p2) AND the
+                        # last question (question_part).  Appending both duplicates it.
+                        _question_already_in_p2 = bool(
+                            question_part and question_part.strip() == p2.strip()
+                        )
+
+                        if (
+                            question_part
+                            and not _question_already_in_p2
+                            and not any(kw in question_part.lower() for kw in ["öneririm", "deneyebilirsin", "şunu yap", "adım at", "iletişime geç"])
+                        ):
+                            response_text = f"{p1}\n\n{p2} {question_part}"
+                        else:
+                            response_text = f"{p1}\n\n{p2}"
+
+                    elif intent == "help_seeking":
+                        p1 = validation_part
+                        
+                        # Select or default action step based on category
+                        step_map = {
+                            "sadness": "Kendini suçlamadan, bugün sadece ılık bir duş almak veya hafif bir nefes egzersizi yapmak gibi küçük bir adım atabilirsin.",
+                            "anhedonia": "Bugün kendini hiçbir şeye zorlamadan, en sevdiğin eski bir şarkıyı dinlemek gibi küçük bir adım atmayı deneyebilirsin.",
+                            "anxiety": "Zihnini şimdiye getirmek için burnundan derin nefesler alıp vererek küçük bir adım atabilirsin.",
+                            "anger": "Sınırlarını korumak adına ani bir tepki vermeden önce biraz durup derin nefes almak gibi küçük bir adım iyi gelebilir.",
+                            "loneliness": "Bugün yakın hissettiğin bir arkadaşına nasılsın diye bir mesaj atmak veya aramak ya da basit bir iletişim kurmak gibi küçük bir adım atabilirsin.",
+                            "motivation_loss": "Büyük hedefleri bir kenara bırakıp sadece 2 dakikalık bir işe başlamak gibi küçük bir adım atabilirsin.",
+                            "relationship_problems": "İlişkideki bu gerginliği azaltmak için sakinleşene kadar kendine biraz zaman tanımak gibi küçük bir adım atmak faydalı olabilir.",
+                            "self_esteem_issues": "Kendine yüklenmek yerine bugün fena yapmadığın ufak bir özelliğini fark etmek gibi küçük bir adım atabilirsin.",
+                            "stress": "Sorumluluklar arasından sadece en acil olan tek bir eylemi seçip küçük bir adım atmayı deneyebilirsin.",
+                            "fear": "Şu an güvende olduğunu hissetmek için etrafındaki nesnelere dokunup derin nefes almak gibi küçük bir adım atabilirsin.",
+                            "guilt_shame": "Kendini hırpalamak yerine hata yapabileceğini kabul edip kendine şefkatle yaklaşmak gibi küçük bir adım atabilirsin.",
+                            "uncertainty": "Seçeneklerin artı ve eksilerini bir kağıda yazarak netleşmek adına küçük bir adım atabilirsin."
+                        }
+                        p2 = step_map.get(category, "Bugün durumla baş etmek adına küçük bir adım atabilirsin.")
+                        if question_part:
+                            response_text = f"{p1}\n\n{p2} {question_part}"
+                        else:
+                            response_text = f"{p1}\n\n{p2}"
+
+                    elif intent == "self_reflection":
+                        # Paragraph 1: Empathic validation + mirror of the self-questioning
+                        # Paragraph 2: One reflective, exploratory question — NO advice, NO exercises
+                        p1 = (
+                            "Bu soruyu sorman aslında kendini anlamaya çalıştığını gösteriyor; "
+                            "bu farkındalık çok değerli. "
+                            f"{validation_part} {normalization_part}"
+                        )
+                        # Find a reflective question or generate one
+                        if question_part:
+                            p2 = question_part
+                        else:
+                            p2 = "Bu hissin sende en yoğun olarak hangi anlarda ya da hangi ilişkilerde ortaya çıktığını fark ettiniz mi?"
+                        response_text = f"{p1}\n\n{p2}"
+
+                    elif intent == "problem_solving":
+                        # Paragraph 1: Acknowledge the dilemma directly — no long emotional blocks
+                        # Paragraph 2: Lightweight decision-support framing
+                        p1 = "İki seçenek arasında kalmak yorucu olabilir; zihnin her iki tarafı tartarken belirsizlik gerçekten ağır bir his yaratabilir."
+                        p2 = "Karar vermeyi kolaylaştırmak için her iki seçeneğin sana kazandıracakları ve kaybettireceği şeyleri kısaca düşünelim — hangisi senin için daha önemli olan değere daha yakın? İstersen birini birlikte konuşalım."
+                        response_text = f"{p1}\n\n{p2}"
+            elif strategy:
+                strategy = strategy.strip().lower()
+                sentences = [s.strip() for s in re.split(r'(?<=[.?])\s+', response_text) if s.strip()]
+                if len(sentences) >= 3:
+                    if strategy == "validation":
+                        if len(sentences) >= 2:
+                            response_text = f"{sentences[0]}\n\n{sentences[1]}"
+                        else:
+                            response_text = sentences[0]
+                    elif strategy == "exploration":
+                        refl = sentences[0]
+                        quest = sentences[-1] if sentences[-1].endswith("?") else ""
+                        if quest:
+                            response_text = f"{refl} {quest}"
+                        else:
+                            response_text = refl
+                    elif strategy == "reflection":
+                        response_text = sentences[0]
+                    elif strategy == "psychoeducation":
+                        response_text = f"{sentences[0]} {sentences[1]}"
+                    elif strategy == "action_planning":
+                        refl = sentences[0]
+                        steps = ""
+                        for s in sentences[1:-1]:
+                            if any(kw in s.lower() for kw in ["öner", "deney", "yapabilir", "başla", "odaklan", "adım"]):
+                                steps = s
+                                break
+                        if not steps and len(sentences) >= 3:
+                            steps = sentences[2]
+                        if steps:
+                            response_text = f"{refl} {steps}"
+                        else:
+                            response_text = refl
+                    elif strategy == "strengths_focused":
+                        response_text = sentences[0]
 
         # 2. Adjust response length dynamically based on user length preference
         length_pref = model_config.get("answer_length_preference", "medium")

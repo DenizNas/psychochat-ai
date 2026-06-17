@@ -55,11 +55,18 @@ fun LoginScreen(navController: NavController, tokenManager: TokenManager) {
     }
     val viewModel: AuthViewModel = viewModel(factory = factory)
     
+    val lastEmail by tokenManager.getLastLoginIdentifier().collectAsState(initial = "")
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var validationError by remember { mutableStateOf<String?>(null) }
     val authState by viewModel.authState.collectAsState()
+    
+    LaunchedEffect(lastEmail) {
+        if (!lastEmail.isNullOrBlank() && lastEmail != "deniznas@example.com") {
+            email = lastEmail!!
+        }
+    }
     
     val scrollState = rememberScrollState()
     

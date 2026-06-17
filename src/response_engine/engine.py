@@ -2,6 +2,7 @@ import os
 import time
 import logging
 import openai
+import threading
 from src.core.config import settings
 
 from src.response_engine.models import EngineConfig, EngineInput, EngineOutput
@@ -20,6 +21,45 @@ from src.ai_providers import ai_orchestrator
 from src.ai_providers.local_provider import sanitize_memory_inlay
 
 logger = logging.getLogger(__name__)
+
+
+class SessionCache(dict):
+    """Thread-safe, memory-bounded cache for session user messages to prevent leaks in production."""
+    def __init__(self, max_size=2000):
+        super().__init__()
+        self.max_size = max_size
+        self._keys = []
+        self._lock = threading.RLock()
+    
+    def __setitem__(self, key, value):
+        with self._lock:
+            if key not in self:
+                self._keys.append(key)
+            super().__setitem__(key, value)
+            if len(self._keys) > self.max_size:
+                oldest_key = self._keys.pop(0)
+                self.pop(oldest_key, None)
+
+    def __getitem__(self, key):
+        with self._lock:
+            return super().__getitem__(key)
+
+    def __contains__(self, key):
+        with self._lock:
+            return super().__contains__(key)
+
+    def get(self, key, default=None):
+        with self._lock:
+            return super().get(key, default)
+
+    def pop(self, key, default=None):
+        with self._lock:
+            if key in self._keys:
+                self._keys.remove(key)
+            return super().pop(key, default)
+
+_SESSION_USER_MESSAGES = SessionCache(max_size=2000)
+
 
 class ResponseEngine:
     def __init__(self, config: EngineConfig = None):
@@ -125,14 +165,174 @@ class ResponseEngine:
         memory_lookup_latency = time.time() - start_mem_time
         memory_context_str = memory_meta.get("injection_text", "") if memory_meta.get("memory_injected") else ""
 
-        # 1. Prompts (modular builder — assembles all sections with versioning)
+        # 1.6. Theme & Need Extraction (runs only on non-crisis turns)
+        # Slot: AFTER subtype detection, BEFORE strategy selection and prompt construction.
+        # Only extracts and transports — does not yet modify prompts or strategy.
+        if not (engine_input.risk.strip().lower() in {"1", "crisis", "kriz"}):
+            try:
+                from src.response_engine.theme_need_engine import detect_theme_and_need
+                tne = detect_theme_and_need(
+                    text=engine_input.text,
+                    emotion=engine_input.emotion,
+                    subtype=engine_input.subtype,
+                )
+                engine_input = engine_input.model_copy(update={
+                    "theme": tne["theme"],
+                    "need":  tne["need"],
+                    "intent": tne["intent"],
+                })
+                logger.debug(
+                    "ENGINE | T&N extracted | theme=%s need=%s intent=%s",
+                    tne["theme"], tne["need"], tne["intent"]
+                )
+            except Exception as tne_err:
+                logger.error(f"ENGINE | Theme & Need extraction error: {tne_err}")
+
+        # 1.7. Intent Enforcement Stage (runs only on non-crisis turns)
+        # Mappings:
+        #   emotional_expression  -> validation
+        #   help_seeking          -> action_planning
+        #   self_reflection       -> reflection
+        #   problem_solving       -> action_planning  (internal tag: decision_support, no DB schema change)
+        if not (engine_input.risk.strip().lower() in {"1", "crisis", "kriz"}):
+            try:
+                intent = engine_input.intent
+                if intent == "emotional_expression":
+                    engine_input = engine_input.model_copy(update={"strategy": "validation"})
+                elif intent == "help_seeking":
+                    engine_input = engine_input.model_copy(update={"strategy": "action_planning"})
+                elif intent == "self_reflection":
+                    engine_input = engine_input.model_copy(update={"strategy": "reflection"})
+                elif intent == "problem_solving":
+                    # Uses action_planning for provider routing; lightweight internal tag tracked in metadata.
+                    engine_input = engine_input.model_copy(update={"strategy": "action_planning"})
+                logger.debug(
+                    "ENGINE | Intent Enforcement | intent=%s -> strategy=%s",
+                    intent, engine_input.strategy
+                )
+            except Exception as ie_err:
+                logger.error(f"ENGINE | Intent Enforcement error: {ie_err}")
+
+        # 1. Variation Selection (runs only for normal non-crisis messages)
+        is_crisis = engine_input.risk.strip().lower() in {"1", "crisis", "kriz"}
+        variation_id = engine_input.variation
+        variation_directive = None
+        
+        if not is_crisis:
+            try:
+                from src.response_engine.variation_engine import select_linguistic_variants, VARIANTS
+                from src.services.database import get_chat_history
+                
+                history = get_chat_history(engine_input.user_id, limit=10)
+                recent_assistant_responses = [msg["content"] for msg in history if msg.get("role") == "assistant"]
+                
+                if not variation_id:
+                    variation_id, variation_directive = select_linguistic_variants(
+                        recent_responses=recent_assistant_responses,
+                        emotion=engine_input.emotion,
+                        subtype=engine_input.subtype,
+                        strategy=engine_input.strategy
+                    )
+                else:
+                    for strat_opts in VARIANTS.values():
+                        for opt in strat_opts:
+                            if opt["id"] == variation_id:
+                                variation_directive = opt["directive"]
+                                break
+                        if variation_directive:
+                            break
+            except Exception as var_err:
+                logger.error(f"ENGINE | Variation engine error: {var_err}")
+
+        # 1.8. Multi-Turn Pattern Detection (runs only on non-crisis turns)
+        conversation_pattern = {"pattern_name": "none", "confidence": 0.0, "hit_count": 0}
+        if not (engine_input.risk.strip().lower() in {"1", "crisis", "kriz"}):
+            try:
+                from src.response_engine.conversation_pattern_engine import detect_conversation_pattern
+                from src.services.database import get_chat_history
+                from datetime import datetime, timezone
+                
+                session_id = getattr(engine_input, "session_id", None)
+                if session_id:
+                    session_key = (engine_input.user_id, session_id)
+                    if session_key not in _SESSION_USER_MESSAGES:
+                        _SESSION_USER_MESSAGES[session_key] = []
+                    session_msgs = _SESSION_USER_MESSAGES[session_key]
+                    if not session_msgs or session_msgs[-1] != engine_input.text:
+                        session_msgs.append(engine_input.text)
+                    recent_user_messages = session_msgs[-5:]
+                    _SESSION_USER_MESSAGES[session_key] = recent_user_messages
+                else:
+                    # Fallback to database history with time-gap threshold (e.g. 10 minutes = 600 seconds)
+                    history = get_chat_history(engine_input.user_id, limit=20)
+                    user_history_msgs = [msg for msg in history if msg.get("role") == "user"]
+                    
+                    threshold_seconds = 600
+                    
+                    def parse_ts(ts_str):
+                        if ts_str.endswith('Z'):
+                            ts_str = ts_str[:-1] + '+00:00'
+                        return datetime.fromisoformat(ts_str)
+
+                    if user_history_msgs:
+                        last_msg = user_history_msgs[-1]
+                        last_ts = parse_ts(last_msg["timestamp"])
+                        
+                        if last_ts.tzinfo is None:
+                            current_time = datetime.now(timezone.utc).replace(tzinfo=None)
+                        else:
+                            current_time = datetime.now(timezone.utc)
+                            
+                        initial_gap = (current_time - last_ts).total_seconds()
+                        if initial_gap < threshold_seconds:
+                            valid_msgs = [last_msg["content"]]
+                            prev_ts = last_ts
+                            for msg in reversed(user_history_msgs[:-1]):
+                                msg_ts = parse_ts(msg["timestamp"])
+                                gap = (prev_ts - msg_ts).total_seconds()
+                                if gap < threshold_seconds:
+                                    valid_msgs.insert(0, msg["content"])
+                                    prev_ts = msg_ts
+                                else:
+                                    break
+                            recent_user_messages = valid_msgs
+                        else:
+                            recent_user_messages = []
+                    else:
+                        recent_user_messages = []
+
+                    recent_user_messages.append(engine_input.text)
+                    recent_user_messages = recent_user_messages[-5:]
+                
+                conversation_pattern = detect_conversation_pattern(
+                    recent_user_messages=recent_user_messages,
+                    current_theme=engine_input.theme,
+                    current_need=engine_input.need
+                )
+                logger.debug(
+                    "ENGINE | Multi-Turn Pattern | pattern=%s confidence=%.2f hit_count=%d",
+                    conversation_pattern.get("pattern_name"),
+                    conversation_pattern.get("confidence"),
+                    conversation_pattern.get("hit_count")
+                )
+            except Exception as pat_err:
+                logger.error(f"ENGINE | Multi-Turn Pattern detection error: {pat_err}")
+
+        # 1.5. Prompts (modular builder — assembles all sections with versioning)
         system_prompt, prompt_meta = build_system_prompt(
             language=engine_input.language,
             emotion=engine_input.emotion,
             risk=engine_input.risk,
             memory_context=memory_context_str,
             preferences=engine_input.preferences.model_dump() if hasattr(engine_input.preferences, "model_dump") else engine_input.preferences.dict(),
-            text=engine_input.text
+            text=engine_input.text,
+            subtype=engine_input.subtype,
+            strategy=engine_input.strategy,
+            variation_directive=variation_directive,
+            theme=engine_input.theme,
+            need=engine_input.need,
+            intent=engine_input.intent,
+            conversation_pattern=conversation_pattern,
         )
         user_prompt = build_user_prompt(
             text=engine_input.text,
@@ -317,9 +517,13 @@ class ResponseEngine:
                 "max_tokens": self.config.max_tokens,
                 "timeout_seconds": self.config.timeout_seconds,
                 "counseling_category": prompt_meta.get("counseling_category", "neutral"),
+                "counseling_strategy": engine_input.strategy,
+                "counseling_subtype": engine_input.subtype,
+                "intent": engine_input.intent,
                 "answer_length_preference": engine_input.preferences.answer_length_preference,
                 "response_style": engine_input.preferences.response_style,
                 "safe_memory_inlays": safe_memory_inlays,
+                "conversation_pattern": conversation_pattern,
             }
             
             # OpenAI is bypassed/minimalized in privacy mode
@@ -379,7 +583,14 @@ class ResponseEngine:
                     memory_context=memory_context_str,
                     preferences=engine_input.preferences.model_dump() if hasattr(engine_input.preferences, "model_dump") else engine_input.preferences.dict(),
                     text=engine_input.text,
-                    retry_instruction=retry_instr
+                    retry_instruction=retry_instr,
+                    subtype=engine_input.subtype,
+                    strategy=engine_input.strategy,
+                    variation_directive=variation_directive,
+                    theme=engine_input.theme,
+                    need=engine_input.need,
+                    intent=engine_input.intent,
+                    conversation_pattern=conversation_pattern,
                 )
 
                 retry_messages = build_messages(
@@ -541,6 +752,21 @@ class ResponseEngine:
                 "final_model": final_model,
                 "error": error_meta,
                 "counseling_category": prompt_meta.get("counseling_category", "neutral"),
+                "subtype": engine_input.subtype,
+                "strategy": engine_input.strategy,
+                "variation": variation_id,
+                "conversation_pattern": conversation_pattern,
+                "psychological_understanding": {
+                    "theme": engine_input.theme,
+                    "need":  engine_input.need,
+                    "intent": engine_input.intent,
+                    # Lightweight internal strategy tag: 'decision_support' for problem_solving,
+                    # 'reflection' for self_reflection. No DB schema change.
+                    "strategy_tag": (
+                        "decision_support" if engine_input.intent == "problem_solving"
+                        else engine_input.strategy or ""
+                    ),
+                },
                 "is_crisis": (crisis_level in ["high", "imminent", "medium"]),
                 "crisis_level": crisis_level,
                 "show_emergency_support": (crisis_level in ["high", "imminent"]),

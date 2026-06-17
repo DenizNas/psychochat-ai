@@ -31,6 +31,7 @@ class AuthViewModel(private val repository: AuthRepository, private val tokenMan
                 is Resource.Success -> {
                     res.data?.let { 
                         tokenManager.saveAuthData(it.access_token, it.username, it.email, it.fullName, it.role)
+                        tokenManager.saveLastLoginIdentifier(email)
                         Log.d(TAG, "LOGIN | Başarılı, token DataStore'a kaydedildi. Kullanıcı: ${it.username}, Rol: ${it.role}")
                     }
                     _authState.value = Resource.Success(true)

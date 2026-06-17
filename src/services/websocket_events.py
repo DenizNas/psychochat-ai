@@ -83,6 +83,9 @@ def build_chat_response(
     emergency_phone: Optional[str] = None,
     emergency_title: Optional[str] = None,
     emergency_message: Optional[str] = None,
+    subtype: Optional[str] = None,
+    strategy: Optional[str] = None,
+    variation: Optional[str] = None,
 ) -> dict:
     """Server-to-client chat cevabı olayı."""
     payload = {
@@ -103,6 +106,12 @@ def build_chat_response(
         payload["emergency_title"] = emergency_title
     if emergency_message is not None:
         payload["emergency_message"] = emergency_message
+    if subtype is not None:
+        payload["subtype"] = subtype
+    if strategy is not None:
+        payload["strategy"] = strategy
+    if variation is not None:
+        payload["variation"] = variation
         
     return {
         "type": WsEventType.CHAT_RESPONSE,

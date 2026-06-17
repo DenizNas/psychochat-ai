@@ -8,6 +8,7 @@ from src.services.database import (
     User,
     UserProfile,
     PsychologistProfile,
+    PsychologistAvailability,
     Appointment
 )
 import base64
@@ -30,6 +31,7 @@ class TestAppointmentAPI(unittest.TestCase):
         db = SessionLocal()
         try:
             db.query(Appointment).delete()
+            db.query(PsychologistAvailability).delete()
             db.query(PsychologistProfile).delete()
             db.query(UserProfile).delete()
             db.query(User).delete()

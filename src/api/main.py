@@ -223,6 +223,8 @@ class PasswordResetCompleteRequest(BaseModel):
 class ChatRequest(BaseModel):
     text: str
     language: Optional[str] = "tr"
+    session_id: Optional[str] = None
+    conversation_id: Optional[str] = None
 
 class ChatResponse(BaseModel):
     emotion: str
@@ -235,6 +237,9 @@ class ChatResponse(BaseModel):
     emergency_phone: Optional[str] = None
     emergency_title: Optional[str] = None
     emergency_message: Optional[str] = None
+    subtype: Optional[str] = None
+    strategy: Optional[str] = None
+    variation: Optional[str] = None
 
 class MemoryResponse(BaseModel):
     id: int
@@ -365,6 +370,12 @@ class WellnessReportResponse(BaseModel):
     highlights: list[str]
     suggestions: list[str]
     created_at: str
+
+class WeeklySummaryResponse(BaseModel):
+    total_messages: int
+    dominant_emotion: str
+    emotion_distribution: dict
+    weekly_evaluation: str
 
 class ReflectionResponse(BaseModel):
     period: str
@@ -1031,6 +1042,19 @@ async def predict(request: Request, body: ChatRequest, background_tasks: Backgro
              emotion_label = raw_emotion
          risk_label = analysis["crisis_detection"]["label"]
 
+    # Apply the upgraded categorize_input mapping consistently to get the final category/emotion
+    from src.response_engine.counseling_examples import categorize_input, detect_emotion_subtype
+    from src.response_engine.strategy_engine import detect_conversation_strategy
+    emotion_label = categorize_input(user_text, emotion_label)
+    subtype_label = detect_emotion_subtype(user_text, emotion_label)
+
+    # Strategy Selection (runs only for normal non-crisis messages)
+    is_crisis = str(risk_label).lower() in ["kriz", "1", "crisis"]
+    if not is_crisis:
+        strategy_label = detect_conversation_strategy(user_text, emotion_label, subtype_label)
+    else:
+        strategy_label = None
+
     emergency_msg = None
     if str(risk_label).lower() in ["kriz", "1", "crisis"]:
         emergency_msg = "Lütfen acil yardıma ihtiyacınız varsa 112'yi veya 114 Psikolojik Destek Hattını arayın."
@@ -1049,16 +1073,30 @@ async def predict(request: Request, body: ChatRequest, background_tasks: Backgro
         logger.error(f"Error fetching profile for {username}, using defaults: {e}")
         user_prefs = UserPreferences()
 
+    session_id = body.session_id or body.conversation_id or request.headers.get("X-Session-ID")
+    logger.info(f"PREDICT | REST Request | user_id='{username}', session_id='{session_id}' (from session_id: '{body.session_id}', conversation_id: '{body.conversation_id}', header: '{request.headers.get('X-Session-ID')}')")
+
     engine_input = EngineInput(
         text=user_text,
         emotion=emotion_label,
         risk=risk_label,
         user_id=username,
         language=user_prefs.preferred_language,
-        preferences=user_prefs
+        preferences=user_prefs,
+        subtype=subtype_label,
+        strategy=strategy_label,
+        session_id=session_id
     )
     engine_output = response_engine.generate_response(engine_input)
     chatgpt_response = engine_output.final_text
+    variation_label = engine_output.metadata.get("variation")
+
+    # If the engine determined this was a crisis (via rule-based classify_crisis_level,
+    # which may fire even when the ML model returned Normal), nullify the pre-computed
+    # strategy and variation to accurately represent the bypassed execution path.
+    if engine_output.metadata.get("is_crisis", False):
+        strategy_label = None
+        variation_label = None
 
     # Align risk and emergency contact if rule-based safety layer triggered crisis fallback
     safety_meta = engine_output.metadata.get("safety", {})
@@ -1077,7 +1115,10 @@ async def predict(request: Request, body: ChatRequest, background_tasks: Backgro
         message_id=message_id,
         emotion=emotion_label,
         risk=risk_label,
-        source="predict"
+        source="predict",
+        subtype=subtype_label,
+        strategy=strategy_label,
+        variation=variation_label
     )
 
     # Invalidate analytical caches for immediate data consistency
@@ -1103,7 +1144,10 @@ async def predict(request: Request, body: ChatRequest, background_tasks: Backgro
         show_emergency_support=engine_output.metadata.get("show_emergency_support", False),
         emergency_phone=engine_output.metadata.get("emergency_phone"),
         emergency_title=engine_output.metadata.get("emergency_title"),
-        emergency_message=engine_output.metadata.get("emergency_message")
+        emergency_message=engine_output.metadata.get("emergency_message"),
+        subtype=subtype_label,
+        strategy=strategy_label,
+        variation=variation_label
     )
 
 @app.get("/history")
@@ -1806,6 +1850,34 @@ def get_wellness_dashboard_endpoint(
         raise HTTPException(status_code=500, detail="Wellness Dashboard verileri oluşturulurken hata oluştu.")
 
 
+@app.get("/analytics/weekly-summary", response_model=WeeklySummaryResponse)
+def get_weekly_summary_endpoint(
+    username: str = Depends(get_current_user)
+):
+    """
+    Exposes basic weekly summary data (message counts, emotions, distribution, and summary evaluation)
+    to regular authenticated users, without require_premium_user restrictions.
+    """
+    try:
+        summary = get_user_emotion_summary(user_id=username, days=7)
+        total_messages = summary.get("total_messages", 0)
+        dominant_emotion = summary.get("dominant_emotion", "Nötr")
+        emotion_distribution = summary.get("emotion_distribution", {})
+        
+        report = generate_wellness_report(user_id=username, period="weekly", days=7)
+        weekly_evaluation = report.get("summary_text", "")
+        
+        return {
+            "total_messages": total_messages,
+            "dominant_emotion": dominant_emotion,
+            "emotion_distribution": emotion_distribution,
+            "weekly_evaluation": weekly_evaluation
+        }
+    except Exception as e:
+        logger.error(f"Error in GET /analytics/weekly-summary: {e}")
+        raise HTTPException(status_code=500, detail="Haftalık özet oluşturulurken hata oluştu.")
+
+
 @app.post("/journal/mood", response_model=MoodJournalResponse)
 def post_mood_journal_endpoint(
     request: CreateMoodJournalRequest,
@@ -2325,6 +2397,10 @@ async def websocket_chat_endpoint(ws: WebSocket, token: Optional[str] = None):
 
     # ── Bağlantı Kur ──────────────────────────────────────────────────────
     await connection_manager.connect(ws, user_id)
+    
+    import uuid
+    session_id = f"ws_{uuid.uuid4().hex}"
+    logger.info(f"WS | Connection established | user_id='{user_id}', session_id='{session_id}'")
 
     import asyncio
     disconnect_reason = "client_close"
@@ -2399,10 +2475,10 @@ async def websocket_chat_endpoint(ws: WebSocket, token: Optional[str] = None):
                 if not safety.get("is_safe", True):
                     emergency = safety.get("emergency_contact")
                     # Crisis event — response engine devreye girer
-                    response_data = await _process_ws_message(user_id, text, lang)
+                    response_data = await _process_ws_message(user_id, text, lang, session_id=session_id)
                     response_data["emergency_contact"] = emergency
                 else:
-                    response_data = await _process_ws_message(user_id, text, lang)
+                    response_data = await _process_ws_message(user_id, text, lang, session_id=session_id)
 
                 # Typing indicator: assistant yazıyor
                 await connection_manager.send_to_user(
@@ -2420,6 +2496,9 @@ async def websocket_chat_endpoint(ws: WebSocket, token: Optional[str] = None):
                     emergency_phone=response_data.get("emergency_phone"),
                     emergency_title=response_data.get("emergency_title"),
                     emergency_message=response_data.get("emergency_message"),
+                    subtype=response_data.get("subtype"),
+                    strategy=response_data.get("strategy"),
+                    variation=response_data.get("variation"),
                 )
 
                 # Typing indicator kapat
@@ -2439,7 +2518,7 @@ async def websocket_chat_endpoint(ws: WebSocket, token: Optional[str] = None):
         await connection_manager.disconnect(ws, user_id, reason=disconnect_reason)
 
 
-async def _process_ws_message(user_id: str, text: str, lang: str) -> dict:
+async def _process_ws_message(user_id: str, text: str, lang: str, session_id: Optional[str] = None) -> dict:
     """
     REST /predict ile aynı inference mantığını çalıştırır.
     Metin içeriği loglanmaz.
@@ -2449,17 +2528,18 @@ async def _process_ws_message(user_id: str, text: str, lang: str) -> dict:
 
     loop = asyncio.get_event_loop()
     with ThreadPoolExecutor(max_workers=1) as pool:
-        result = await loop.run_in_executor(pool, _sync_process_message, user_id, text, lang)
+        result = await loop.run_in_executor(pool, _sync_process_message, user_id, text, lang, session_id)
     return result
 
 
-def _sync_process_message(user_id: str, text: str, lang: str) -> dict:
+def _sync_process_message(user_id: str, text: str, lang: str, session_id: Optional[str] = None) -> dict:
     """Sync wrapper — predictor inference (thread-safe)."""
     try:
         import uuid
         import time
 
         start_time = time.time()
+        logger.info(f"WS | Process message | user_id='{user_id}', session_id='{session_id}'")
         
         # 1. Preprocess & Validate input
         model_input = prepare_model_input(text)
@@ -2473,6 +2553,19 @@ def _sync_process_message(user_id: str, text: str, lang: str) -> dict:
         else:
             emotion_label = analysis["emotion"]["label"]
             risk_label = analysis["crisis_detection"]["label"]
+
+        # Apply the upgraded categorize_input mapping consistently to get the final category/emotion
+        from src.response_engine.counseling_examples import categorize_input, detect_emotion_subtype
+        from src.response_engine.strategy_engine import detect_conversation_strategy
+        emotion_label = categorize_input(model_input, emotion_label)
+        subtype_label = detect_emotion_subtype(model_input, emotion_label)
+
+        # Strategy Selection (runs only for normal non-crisis messages)
+        is_crisis = str(risk_label).lower() in ["kriz", "1", "crisis"]
+        if not is_crisis:
+            strategy_label = detect_conversation_strategy(model_input, emotion_label, subtype_label)
+        else:
+            strategy_label = None
 
         # 3. User Preferences Fetching
         from src.response_engine.models import UserPreferences
@@ -2495,10 +2588,14 @@ def _sync_process_message(user_id: str, text: str, lang: str) -> dict:
             risk=risk_label,
             user_id=user_id,
             language=user_prefs.preferred_language,
-            preferences=user_prefs
+            preferences=user_prefs,
+            subtype=subtype_label,
+            strategy=strategy_label,
+            session_id=session_id
         )
         engine_output = response_engine.generate_response(engine_input)
         chatgpt_response = engine_output.final_text
+        variation_label = engine_output.metadata.get("variation")
 
         # 5. Safety alignment
         safety_meta = engine_output.metadata.get("safety", {})
@@ -2516,7 +2613,10 @@ def _sync_process_message(user_id: str, text: str, lang: str) -> dict:
             message_id=message_id,
             emotion=emotion_label,
             risk=risk_label,
-            source="websocket"
+            source="websocket",
+            subtype=subtype_label,
+            strategy=strategy_label,
+            variation=variation_label
         )
 
         # 7. Invalidate analytics cache
@@ -2544,6 +2644,9 @@ def _sync_process_message(user_id: str, text: str, lang: str) -> dict:
             "emergency_phone": engine_output.metadata.get("emergency_phone"),
             "emergency_title": engine_output.metadata.get("emergency_title"),
             "emergency_message": engine_output.metadata.get("emergency_message"),
+            "subtype": subtype_label,
+            "strategy": strategy_label,
+            "variation": variation_label
         }
     except Exception as exc:
         logger.exception("WS inference hatası")

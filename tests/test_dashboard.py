@@ -154,6 +154,24 @@ class TestWellnessDashboard(unittest.TestCase):
         finally:
             app.dependency_overrides.clear()
 
+    def test_weekly_summary_endpoint(self):
+        """Verify GET /analytics/weekly-summary endpoint works and returns basic summary fields."""
+        # Add sufficient history
+        for i in range(4):
+            save_emotion_event("test_user", f"msg_summary_{i}", "Sakin", "düşük")
+
+        app.dependency_overrides[get_current_user] = lambda: "test_user"
+        try:
+            response = self.client.get("/analytics/weekly-summary")
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertEqual(data["total_messages"], 4)
+            self.assertEqual(data["dominant_emotion"], "Sakin")
+            self.assertIn("emotion_distribution", data)
+            self.assertIn("weekly_evaluation", data)
+        finally:
+            app.dependency_overrides.clear()
+
 
 if __name__ == "__main__":
     unittest.main()

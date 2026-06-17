@@ -28,6 +28,14 @@ class EngineInput(BaseModel):
     user_id: str = Field(default="default", description="User identifier")
     language: str = Field(default="tr", description="Language for response")
     preferences: UserPreferences = Field(default_factory=UserPreferences)
+    subtype: Optional[str] = Field(default=None, description="Detected emotion subtype label")
+    strategy: Optional[str] = Field(default=None, description="Detected conversation strategy label")
+    variation: Optional[str] = Field(default=None, description="Detected response variation label")
+    theme: Optional[str] = Field(default=None, description="Psychological theme (from theme_need_engine.THEME_TAXONOMY)")
+    need: Optional[str] = Field(default=None, description="Psychological need (from theme_need_engine.NEED_TAXONOMY)")
+    intent: Optional[str] = Field(default=None, description="User intent (from theme_need_engine.INTENT_TAXONOMY)")
+    session_id: Optional[str] = Field(default=None, description="Chat session identifier")
+
 
 class EngineOutput(BaseModel):
     """Output payload from the Response Engine"""

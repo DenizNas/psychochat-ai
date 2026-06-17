@@ -34,7 +34,7 @@ object RetrofitClient {
             if (isEmulator) {
                 "http://10.0.2.2:8000/"
             } else {
-                "http://10.200.38.150:8000/"
+                "http://192.168.1.203:8000/"
             }
         }
     }

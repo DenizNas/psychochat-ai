@@ -82,6 +82,18 @@ class Settings(BaseModel):
     OLLAMA_BASE_URL: str = Field(default="http://localhost:11434")
     OLLAMA_MODEL: str = Field(default="llama3")
 
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def make_sqlite_path_absolute(cls, v):
+        if isinstance(v, str) and v.startswith("sqlite:///"):
+            db_path = v[10:]
+            if not os.path.isabs(db_path) and not db_path.startswith(":memory:"):
+                project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                absolute_db_path = os.path.abspath(os.path.join(project_root, db_path))
+                os.makedirs(os.path.dirname(absolute_db_path), exist_ok=True)
+                return f"sqlite:///{absolute_db_path}"
+        return v
+
     @field_validator("DEBUG", mode="before")
     @classmethod
     def parse_debug(cls, v):

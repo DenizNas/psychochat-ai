@@ -27,10 +27,18 @@ class TokenManager(private val context: Context) {
         val WEEKLY_RECAP_DAY_KEY = stringPreferencesKey("notifications_weekly_recap_day")
         val WEEKLY_RECAP_TIME_KEY = stringPreferencesKey("notifications_weekly_recap_time")
         val PROFILE_PHOTO_URL_KEY = stringPreferencesKey("profile_photo_url")
+        val LAST_LOGIN_IDENTIFIER_KEY = stringPreferencesKey("last_login_identifier")
     }
     
     fun getToken(): Flow<String?> = context.dataStore.data.map { it[TOKEN_KEY] }
     fun getProfilePhotoUrl(): Flow<String?> = context.dataStore.data.map { it[PROFILE_PHOTO_URL_KEY] }
+    fun getLastLoginIdentifier(): Flow<String?> = context.dataStore.data.map { it[LAST_LOGIN_IDENTIFIER_KEY] }
+    
+    suspend fun saveLastLoginIdentifier(identifier: String) {
+        context.dataStore.edit { preferences ->
+            preferences[LAST_LOGIN_IDENTIFIER_KEY] = identifier
+        }
+    }
     
     suspend fun saveProfilePhotoUrl(url: String) {
         context.dataStore.edit { preferences ->
@@ -134,6 +142,7 @@ class TokenManager(private val context: Context) {
             preferences.remove(WEEKLY_RECAP_DAY_KEY)
             preferences.remove(WEEKLY_RECAP_TIME_KEY)
             preferences.remove(PROFILE_PHOTO_URL_KEY)
+            preferences.remove(LAST_LOGIN_IDENTIFIER_KEY)
         }
         try {
             AppDatabase.getInstance(context).clearAllTables()

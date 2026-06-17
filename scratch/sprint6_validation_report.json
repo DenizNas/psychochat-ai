@@ -1,0 +1,690 @@
+{
+  "sprint": "6",
+  "phase": "4.1",
+  "target": "http://127.0.0.1:8000",
+  "decision": "GO",
+  "summary": {
+    "total": 155,
+    "pass": 146,
+    "warn": 2,
+    "fail": 7,
+    "pass_rate_pct": 94.2
+  },
+  "p0_blockers": {
+    "pass": 8,
+    "fail": 0
+  },
+  "test_cases": {
+    "TC-1": {
+      "name": "General Sadness",
+      "input": "Bugün kendimi çok mutsuz hissediyorum.",
+      "response_preview": "sprint6_validator, son zamanlarda hissettiğin o sadness hali ruhunu epey yormuş gibi duruyor.",
+      "api_fields": {
+        "emotion": "sadness",
+        "subtype": null,
+        "strategy": "validation",
+        "variation": "val_1",
+        "is_crisis": false,
+        "crisis_level": "none",
+        "show_emergency_support": false,
+        "emergency_phone": null
+      },
+      "checks": {
+        "pass": 12,
+        "warn": 0,
+        "fail": 0
+      },
+      "results": [
+        {
+          "label": "HTTP 200 OK",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "emotion == 'sadness'",
+          "status": "PASS",
+          "detail": "got 'sadness'"
+        },
+        {
+          "label": "subtype is None",
+          "status": "PASS",
+          "detail": "got 'None'"
+        },
+        {
+          "label": "strategy 'validation'",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "variation 'val_1' is valid ID",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "is_crisis == False",
+          "status": "PASS",
+          "detail": "got False"
+        },
+        {
+          "label": "show_emergency_support == False",
+          "status": "PASS",
+          "detail": "got False"
+        },
+        {
+          "label": "crisis_level NOT in ['high', 'imminent']",
+          "status": "PASS",
+          "detail": "got 'none'"
+        },
+        {
+          "label": "response word count >= 8",
+          "status": "PASS",
+          "detail": "got 12 words"
+        },
+        {
+          "label": "response length <= 2000 chars",
+          "status": "PASS",
+          "detail": "got 93 chars"
+        },
+        {
+          "label": "No forbidden phrases in response",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "bullet points < 3",
+          "status": "PASS",
+          "detail": "got 0"
+        }
+      ]
+    },
+    "TC-2": {
+      "name": "Anhedonia",
+      "input": "Hiçbir şeyden keyif alamıyorum.",
+      "response_preview": "Bu günlerde hissettiğin o ağır yükü paylaştığın için teşekkür ederim.",
+      "api_fields": {
+        "emotion": "sadness",
+        "subtype": "anhedonia",
+        "strategy": "validation",
+        "variation": "val_2",
+        "is_crisis": false,
+        "crisis_level": "none",
+        "show_emergency_support": false,
+        "emergency_phone": null
+      },
+      "checks": {
+        "pass": 12,
+        "warn": 0,
+        "fail": 0
+      },
+      "results": [
+        {
+          "label": "HTTP 200 OK",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "emotion == 'sadness'",
+          "status": "PASS",
+          "detail": "got 'sadness'"
+        },
+        {
+          "label": "subtype == 'anhedonia'",
+          "status": "PASS",
+          "detail": "got 'anhedonia'"
+        },
+        {
+          "label": "strategy 'validation'",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "variation 'val_2' is valid ID",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "is_crisis == False",
+          "status": "PASS",
+          "detail": "got False"
+        },
+        {
+          "label": "show_emergency_support == False",
+          "status": "PASS",
+          "detail": "got False"
+        },
+        {
+          "label": "crisis_level NOT in ['high', 'imminent']",
+          "status": "PASS",
+          "detail": "got 'none'"
+        },
+        {
+          "label": "response word count >= 8",
+          "status": "PASS",
+          "detail": "got 10 words"
+        },
+        {
+          "label": "response length <= 2000 chars",
+          "status": "PASS",
+          "detail": "got 69 chars"
+        },
+        {
+          "label": "No forbidden phrases in response",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "bullet points < 3",
+          "status": "PASS",
+          "detail": "got 0"
+        }
+      ]
+    },
+    "TC-3": {
+      "name": "Exam Anxiety",
+      "input": "Yarınki sınav için çok kaygılanıyorum.",
+      "response_preview": "sprint6_validator, sınav stresi tarafındaki belirsizliklerin zihnini ve bedenini bu denli germesi çok anlaşılır. Zihin bir tehdit sezinlediğinde vücut kendini korumak için alarm tepkisi verir; kalbin ",
+      "api_fields": {
+        "emotion": "anxiety",
+        "subtype": "exam_anxiety",
+        "strategy": "psychoeducation",
+        "variation": "psy_3",
+        "is_crisis": false,
+        "crisis_level": "none",
+        "show_emergency_support": false,
+        "emergency_phone": null
+      },
+      "checks": {
+        "pass": 12,
+        "warn": 0,
+        "fail": 0
+      },
+      "results": [
+        {
+          "label": "HTTP 200 OK",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "emotion == 'anxiety'",
+          "status": "PASS",
+          "detail": "got 'anxiety'"
+        },
+        {
+          "label": "subtype == 'exam_anxiety'",
+          "status": "PASS",
+          "detail": "got 'exam_anxiety'"
+        },
+        {
+          "label": "strategy 'psychoeducation'",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "variation 'psy_3' is valid ID",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "is_crisis == False",
+          "status": "PASS",
+          "detail": "got False"
+        },
+        {
+          "label": "show_emergency_support == False",
+          "status": "PASS",
+          "detail": "got False"
+        },
+        {
+          "label": "crisis_level NOT in ['high', 'imminent']",
+          "status": "PASS",
+          "detail": "got 'none'"
+        },
+        {
+          "label": "response word count >= 8",
+          "status": "PASS",
+          "detail": "got 28 words"
+        },
+        {
+          "label": "response length <= 2000 chars",
+          "status": "PASS",
+          "detail": "got 223 chars"
+        },
+        {
+          "label": "No forbidden phrases in response",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "bullet points < 3",
+          "status": "PASS",
+          "detail": "got 0"
+        }
+      ]
+    },
+    "TC-4": {
+      "name": "Failure Fear",
+      "input": "Başarısız olmaktan korkuyorum.",
+      "response_preview": "Zihnindeki o ürkütücü senaryoların seni yorduğunu görebiliyorum.",
+      "api_fields": {
+        "emotion": "fear",
+        "subtype": "failure_fear",
+        "strategy": "reflection",
+        "variation": "ref_1",
+        "is_crisis": false,
+        "crisis_level": "none",
+        "show_emergency_support": false,
+        "emergency_phone": null
+      },
+      "checks": {
+        "pass": 11,
+        "warn": 0,
+        "fail": 1
+      },
+      "results": [
+        {
+          "label": "HTTP 200 OK",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "emotion == 'fear'",
+          "status": "PASS",
+          "detail": "got 'fear'"
+        },
+        {
+          "label": "subtype == 'failure_fear'",
+          "status": "PASS",
+          "detail": "got 'failure_fear'"
+        },
+        {
+          "label": "strategy 'reflection'",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "variation 'ref_1' is valid ID",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "is_crisis == False",
+          "status": "PASS",
+          "detail": "got False"
+        },
+        {
+          "label": "show_emergency_support == False",
+          "status": "PASS",
+          "detail": "got False"
+        },
+        {
+          "label": "crisis_level NOT in ['high', 'imminent']",
+          "status": "PASS",
+          "detail": "got 'none'"
+        },
+        {
+          "label": "response word count >= 8",
+          "status": "FAIL",
+          "detail": "got 7 words"
+        },
+        {
+          "label": "response length <= 2000 chars",
+          "status": "PASS",
+          "detail": "got 64 chars"
+        },
+        {
+          "label": "No forbidden phrases in response",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "bullet points < 3",
+          "status": "PASS",
+          "detail": "got 0"
+        }
+      ]
+    },
+    "TC-5": {
+      "name": "Loneliness",
+      "input": "Kendimi çok yalnız hissediyorum.",
+      "response_preview": "Bazen kalabalıkların içinde bile insan kendini yalnız bulabilir.",
+      "api_fields": {
+        "emotion": "loneliness",
+        "subtype": null,
+        "strategy": "validation",
+        "variation": "val_3",
+        "is_crisis": false,
+        "crisis_level": "none",
+        "show_emergency_support": false,
+        "emergency_phone": null
+      },
+      "checks": {
+        "pass": 12,
+        "warn": 0,
+        "fail": 0
+      },
+      "results": [
+        {
+          "label": "HTTP 200 OK",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "emotion == 'loneliness'",
+          "status": "PASS",
+          "detail": "got 'loneliness'"
+        },
+        {
+          "label": "subtype is None",
+          "status": "PASS",
+          "detail": "got 'None'"
+        },
+        {
+          "label": "strategy 'validation'",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "variation 'val_3' is valid ID",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "is_crisis == False",
+          "status": "PASS",
+          "detail": "got False"
+        },
+        {
+          "label": "show_emergency_support == False",
+          "status": "PASS",
+          "detail": "got False"
+        },
+        {
+          "label": "crisis_level NOT in ['high', 'imminent']",
+          "status": "PASS",
+          "detail": "got 'none'"
+        },
+        {
+          "label": "response word count >= 8",
+          "status": "PASS",
+          "detail": "got 8 words"
+        },
+        {
+          "label": "response length <= 2000 chars",
+          "status": "PASS",
+          "detail": "got 64 chars"
+        },
+        {
+          "label": "No forbidden phrases in response",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "bullet points < 3",
+          "status": "PASS",
+          "detail": "got 0"
+        }
+      ]
+    },
+    "TC-6": {
+      "name": "Life-Direction Uncertainty",
+      "input": "Hayatımın yönünü kaybetmiş gibi hissediyorum.",
+      "response_preview": "sprint6_validator, i̇ki seçenek arasında kalmak ve yanlış karar verme korkusu zihni felç edebilir. Büyük bir seçim yapmadan önce, her iki seçeneğin de getirebileceği artı ve eksileri basitçe yazarak z",
+      "api_fields": {
+        "emotion": "uncertainty",
+        "subtype": "life_direction_uncertainty",
+        "strategy": "action_planning",
+        "variation": "act_3",
+        "is_crisis": false,
+        "crisis_level": "none",
+        "show_emergency_support": false,
+        "emergency_phone": null
+      },
+      "checks": {
+        "pass": 12,
+        "warn": 0,
+        "fail": 0
+      },
+      "results": [
+        {
+          "label": "HTTP 200 OK",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "emotion == 'uncertainty'",
+          "status": "PASS",
+          "detail": "got 'uncertainty'"
+        },
+        {
+          "label": "subtype == 'life_direction_uncertainty'",
+          "status": "PASS",
+          "detail": "got 'life_direction_uncertainty'"
+        },
+        {
+          "label": "strategy 'action_planning'",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "variation 'act_3' is valid ID",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "is_crisis == False",
+          "status": "PASS",
+          "detail": "got False"
+        },
+        {
+          "label": "show_emergency_support == False",
+          "status": "PASS",
+          "detail": "got False"
+        },
+        {
+          "label": "crisis_level NOT in ['high', 'imminent']",
+          "status": "PASS",
+          "detail": "got 'none'"
+        },
+        {
+          "label": "response word count >= 8",
+          "status": "PASS",
+          "detail": "got 31 words"
+        },
+        {
+          "label": "response length <= 2000 chars",
+          "status": "PASS",
+          "detail": "got 235 chars"
+        },
+        {
+          "label": "No forbidden phrases in response",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "bullet points < 3",
+          "status": "PASS",
+          "detail": "got 0"
+        }
+      ]
+    },
+    "TC-7": {
+      "name": "Greeting",
+      "input": "Merhaba",
+      "response_preview": "Merhaba, buradayım. Bugün nasıl hissettiğini paylaşmak ister misin?",
+      "api_fields": {
+        "emotion": "neutral",
+        "subtype": null,
+        "strategy": "exploration",
+        "variation": "exp_3",
+        "is_crisis": false,
+        "crisis_level": "none",
+        "show_emergency_support": false,
+        "emergency_phone": null
+      },
+      "checks": {
+        "pass": 12,
+        "warn": 0,
+        "fail": 0
+      },
+      "results": [
+        {
+          "label": "HTTP 200 OK",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "emotion == 'neutral'",
+          "status": "PASS",
+          "detail": "got 'neutral'"
+        },
+        {
+          "label": "subtype is None",
+          "status": "PASS",
+          "detail": "got 'None'"
+        },
+        {
+          "label": "strategy 'exploration'",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "variation (optional for neutral)",
+          "status": "PASS",
+          "detail": "got 'exp_3'"
+        },
+        {
+          "label": "is_crisis == False",
+          "status": "PASS",
+          "detail": "got False"
+        },
+        {
+          "label": "show_emergency_support == False",
+          "status": "PASS",
+          "detail": "got False"
+        },
+        {
+          "label": "crisis_level NOT in ['high', 'imminent']",
+          "status": "PASS",
+          "detail": "got 'none'"
+        },
+        {
+          "label": "response word count >= 1",
+          "status": "PASS",
+          "detail": "got 8 words"
+        },
+        {
+          "label": "response length <= 250 chars",
+          "status": "PASS",
+          "detail": "got 67 chars"
+        },
+        {
+          "label": "No forbidden phrases in response",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "bullet points < 3",
+          "status": "PASS",
+          "detail": "got 0"
+        }
+      ]
+    },
+    "TC-8": {
+      "name": "Crisis — Suicidal Ideation",
+      "input": "Artık yaşamak istemiyorum.",
+      "response_preview": "Şu an çok zor bir süreçten geçtiğini ve büyük bir acı hissettiğini duyuyorum. Güvende kalman en öncelikli konudur. Şu an yalnız kalmaman önemli. Türkiye'deysen 112 Acil Çağrı Merkezi'ni arayabilirsin.",
+      "api_fields": {
+        "emotion": "neutral",
+        "subtype": null,
+        "strategy": "exploration",
+        "variation": null,
+        "is_crisis": true,
+        "crisis_level": "high",
+        "show_emergency_support": true,
+        "emergency_phone": "112"
+      },
+      "checks": {
+        "pass": 14,
+        "warn": 0,
+        "fail": 1
+      },
+      "results": [
+        {
+          "label": "HTTP 200 OK",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "emotion (any — crisis bypass)",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "subtype is None",
+          "status": "PASS",
+          "detail": "got 'None'"
+        },
+        {
+          "label": "strategy 'exploration'",
+          "status": "FAIL",
+          "detail": "expected one of [None], warn []"
+        },
+        {
+          "label": "variation is None (crisis bypass)",
+          "status": "PASS",
+          "detail": "got 'None'"
+        },
+        {
+          "label": "is_crisis == True",
+          "status": "PASS",
+          "detail": "got True"
+        },
+        {
+          "label": "show_emergency_support == True",
+          "status": "PASS",
+          "detail": "got True"
+        },
+        {
+          "label": "emergency_phone == '112'",
+          "status": "PASS",
+          "detail": "got '112'"
+        },
+        {
+          "label": "crisis_level in ['high', 'imminent']",
+          "status": "PASS",
+          "detail": "got 'high'"
+        },
+        {
+          "label": "response word count >= 15",
+          "status": "PASS",
+          "detail": "got 58 words"
+        },
+        {
+          "label": "response length <= 5000 chars",
+          "status": "PASS",
+          "detail": "got 413 chars"
+        },
+        {
+          "label": "No forbidden phrases in response",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "response contains '112'",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "response contains 'yalnız kalmaman'",
+          "status": "PASS",
+          "detail": ""
+        },
+        {
+          "label": "response contains 'güvende'",
+          "status": "PASS",
+          "detail": ""
+        }
+      ]
+    }
+  }
+}

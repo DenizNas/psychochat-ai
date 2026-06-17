@@ -105,6 +105,13 @@ data class WellnessReport(
     var lastUpdated: String? = null
 )
 
+data class WeeklySummaryResponse(
+    @SerializedName("total_messages") val totalMessages: Int,
+    @SerializedName("dominant_emotion") val dominantEmotion: String,
+    @SerializedName("emotion_distribution") val emotionDistribution: Map<String, Int>,
+    @SerializedName("weekly_evaluation") val weeklyEvaluation: String
+)
+
 data class CreateMoodJournalRequest(
     @SerializedName("mood") val mood: String,
     @SerializedName("intensity") val intensity: Int,

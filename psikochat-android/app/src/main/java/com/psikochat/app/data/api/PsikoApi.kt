@@ -87,6 +87,9 @@ interface PsikoApi {
         @retrofit2.http.Query("days") days: Int
     ): WellnessDashboardResponse
 
+    @GET("/analytics/weekly-summary")
+    suspend fun getWeeklySummary(): WeeklySummaryResponse
+
     @GET("/memory")
     suspend fun getMemories(): List<UserMemory>
 

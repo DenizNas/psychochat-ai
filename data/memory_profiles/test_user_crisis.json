@@ -2,7 +2,9 @@
   "recurring_topics": [],
   "recurring_emotions": [],
   "goals": [],
-  "stressors": [],
+  "stressors": [
+    "motivasyon kaybı"
+  ],
   "coping_methods": [],
   "positive_events": [],
   "relationship_context": [],

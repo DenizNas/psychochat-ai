@@ -179,6 +179,7 @@ def init_db(retries: int = 5, delay: int = 5):
     Veritabanı bağlantısını ve tabloları başlatır.
     Eğer PostgreSQL kullanılıyorsa ve DB henüz hazır değilse belli sayıda tekrar dener.
     """
+    logger.info(f"DATABASE | Initializing database connection. Active URL: {DATABASE_URL}")
     for attempt in range(1, retries + 1):
         try:
             Base.metadata.create_all(bind=engine)
@@ -188,9 +189,14 @@ def init_db(retries: int = 5, delay: int = 5):
             migrate_users_schema_phase2a() # Phase 2A: add email and full_name columns if missing
             migrate_recommendation_schema()  # Faz 10 P7: recommendation_events table
             migrate_password_reset_codes_schema()  # Phase 11.0A: password_reset_codes table
+            migrate_emotion_events_schema()  # Sprint 2: add subtype column if missing
+            migrate_emotion_events_schema_sprint3()  # Sprint 3: add strategy column if missing
+            migrate_emotion_events_schema_sprint4()  # Sprint 4: add variation column if missing
             seed_plans()  # Seed default plans
             seed_admin()  # Seed default admin user
             seed_test_user()  # Seed default test user denizdennasnas@gmail.com
+            seed_psychologists()  # Seed default psychologists and clean up test/orphaned profiles
+            logger.info(f"DATABASE | Database initialized successfully. Active URL: {DATABASE_URL}")
             return
         except OperationalError as e:
             print(f"Warning: DB connection failed on attempt {attempt}/{retries}: {e}")
@@ -392,6 +398,120 @@ def migrate_password_reset_codes_schema() -> None:
             logger.debug("MIGRATE | Table 'password_reset_codes' already exists — skipped")
     except Exception as migrate_err:
         logger.warning("MIGRATE | password_reset_codes schema migration failed: %s", migrate_err)
+
+
+def migrate_emotion_events_schema() -> None:
+    """
+    Migration-safe ALTER TABLE for emotion_events table adding 'subtype' column if not present.
+    """
+    is_sqlite = DATABASE_URL.startswith("sqlite")
+    try:
+        with engine.connect() as conn:
+            try:
+                if is_sqlite:
+                    # SQLite ADD COLUMN is safe via generic try/except
+                    conn.execute(
+                        __import__("sqlalchemy", fromlist=["text"]).text(
+                            "ALTER TABLE emotion_events ADD COLUMN subtype VARCHAR(64) DEFAULT NULL"
+                        )
+                    )
+                else:
+                    # PostgreSQL: Check if column exists first
+                    result = conn.execute(
+                        __import__("sqlalchemy", fromlist=["text"]).text(
+                            "SELECT column_name FROM information_schema.columns "
+                            "WHERE table_name='emotion_events' AND column_name='subtype'"
+                        )
+                    )
+                    if result.fetchone() is None:
+                        conn.execute(
+                            __import__("sqlalchemy", fromlist=["text"]).text(
+                                "ALTER TABLE emotion_events ADD COLUMN subtype VARCHAR(64) DEFAULT NULL"
+                            )
+                        )
+                conn.commit()
+                logger.info("MIGRATE | Added column 'subtype' to emotion_events table.")
+            except Exception as col_err:
+                conn.rollback()
+                logger.debug("MIGRATE | Column 'subtype' likely already exists in emotion_events: %s", col_err)
+    except Exception as migrate_err:
+        logger.error("MIGRATE_ERROR | Failed to migrate emotion_events schema: %s", migrate_err)
+
+
+def migrate_emotion_events_schema_sprint3() -> None:
+    """
+    Migration-safe ALTER TABLE for emotion_events table adding 'strategy' column if not present.
+    """
+    is_sqlite = DATABASE_URL.startswith("sqlite")
+    try:
+        with engine.connect() as conn:
+            try:
+                if is_sqlite:
+                    # SQLite ADD COLUMN is safe via generic try/except
+                    conn.execute(
+                        __import__("sqlalchemy", fromlist=["text"]).text(
+                            "ALTER TABLE emotion_events ADD COLUMN strategy VARCHAR(64) DEFAULT NULL"
+                        )
+                    )
+                else:
+                    # PostgreSQL: Check if column exists first
+                    result = conn.execute(
+                        __import__("sqlalchemy", fromlist=["text"]).text(
+                            "SELECT column_name FROM information_schema.columns "
+                            "WHERE table_name='emotion_events' AND column_name='strategy'"
+                        )
+                    )
+                    if result.fetchone() is None:
+                        conn.execute(
+                            __import__("sqlalchemy", fromlist=["text"]).text(
+                                "ALTER TABLE emotion_events ADD COLUMN strategy VARCHAR(64) DEFAULT NULL"
+                            )
+                        )
+                conn.commit()
+                logger.info("MIGRATE | Added column 'strategy' to emotion_events table.")
+            except Exception as col_err:
+                conn.rollback()
+                logger.debug("MIGRATE | Column 'strategy' likely already exists in emotion_events: %s", col_err)
+    except Exception as migrate_err:
+        logger.error("MIGRATE_ERROR | Failed to migrate emotion_events schema for strategy: %s", migrate_err)
+
+
+def migrate_emotion_events_schema_sprint4() -> None:
+    """
+    Migration-safe ALTER TABLE for emotion_events table adding 'variation' column if not present.
+    """
+    is_sqlite = DATABASE_URL.startswith("sqlite")
+    try:
+        with engine.connect() as conn:
+            try:
+                if is_sqlite:
+                    # SQLite ADD COLUMN is safe via generic try/except
+                    conn.execute(
+                        __import__("sqlalchemy", fromlist=["text"]).text(
+                            "ALTER TABLE emotion_events ADD COLUMN variation VARCHAR(64) DEFAULT NULL"
+                        )
+                    )
+                else:
+                    # PostgreSQL: Check if column exists first
+                    result = conn.execute(
+                        __import__("sqlalchemy", fromlist=["text"]).text(
+                            "SELECT column_name FROM information_schema.columns "
+                            "WHERE table_name='emotion_events' AND column_name='variation'"
+                        )
+                    )
+                    if result.fetchone() is None:
+                        conn.execute(
+                            __import__("sqlalchemy", fromlist=["text"]).text(
+                                "ALTER TABLE emotion_events ADD COLUMN variation VARCHAR(64) DEFAULT NULL"
+                            )
+                        )
+                conn.commit()
+                logger.info("MIGRATE | Added column 'variation' to emotion_events table.")
+            except Exception as col_err:
+                conn.rollback()
+                logger.debug("MIGRATE | Column 'variation' likely already exists in emotion_events: %s", col_err)
+    except Exception as migrate_err:
+        logger.error("MIGRATE_ERROR | Failed to migrate emotion_events schema for variation: %s", migrate_err)
 
 
 def create_user(username: str, password_hash: str, email: Optional[str] = None, full_name: Optional[str] = None, role: str = "user") -> bool:
@@ -957,6 +1077,9 @@ class EmotionEvent(Base):
     risk = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     source = Column(String, default="predict", nullable=False)
+    subtype = Column(String, nullable=True)
+    strategy = Column(String, nullable=True)
+    variation = Column(String, nullable=True)
 
 
 # ---------------------------------------------------------------------------
@@ -1077,7 +1200,7 @@ class RecommendationEvent(Base):
     metadata_json = Column(String, nullable=True)                # actions list as JSON
 
 
-def save_emotion_event(user_id: str, message_id: str, emotion: str, risk: str, source: str = "predict") -> bool:
+def save_emotion_event(user_id: str, message_id: str, emotion: str, risk: str, source: str = "predict", subtype: Optional[str] = None, strategy: Optional[str] = None, variation: Optional[str] = None) -> bool:
     """Saves a new emotion timeline event to SQLite database securely."""
     db = SessionLocal()
     try:
@@ -1086,7 +1209,10 @@ def save_emotion_event(user_id: str, message_id: str, emotion: str, risk: str, s
             message_id=message_id,
             emotion=emotion,
             risk=risk,
-            source=source
+            source=source,
+            subtype=subtype,
+            strategy=strategy,
+            variation=variation
         )
         db.add(event)
         db.commit()
@@ -1117,7 +1243,10 @@ def get_user_emotion_timeline(user_id: str, days: int = 7) -> List[Dict]:
                 "emotion": e.emotion,
                 "risk": e.risk,
                 "created_at": e.created_at.isoformat(),
-                "source": e.source
+                "source": e.source,
+                "subtype": e.subtype,
+                "strategy": e.strategy,
+                "variation": e.variation
             }
             for e in events
         ]
@@ -1879,13 +2008,13 @@ def seed_admin():
         db.close()
 
 def seed_test_user():
-    """Seeds a default test user for forgot password testing."""
-    from src.services.auth import get_password_hash
+    """Seeds a default test user or updates existing user to match defaults."""
+    from src.services.auth import get_password_hash, verify_password
     db = SessionLocal()
     try:
         test_user = db.query(User).filter(User.email == "denizdennasnas@gmail.com").first()
+        hashed_pw = get_password_hash("password123")
         if not test_user:
-            hashed_pw = get_password_hash("Psiko123!")
             user = User(
                 username="deniz",
                 password_hash=hashed_pw,
@@ -1896,9 +2025,104 @@ def seed_test_user():
             db.add(user)
             db.commit()
             logger.info("SEED | Seeded default test user denizdennasnas@gmail.com.")
+        else:
+            updated = False
+            if test_user.username != "deniz":
+                test_user.username = "deniz"
+                updated = True
+            if test_user.full_name != "Deniz Nas":
+                test_user.full_name = "Deniz Nas"
+                updated = True
+            if test_user.role != "user":
+                test_user.role = "user"
+                updated = True
+            if not verify_password("password123", test_user.password_hash):
+                test_user.password_hash = hashed_pw
+                updated = True
+            if updated:
+                db.commit()
+                logger.info("SEED | Updated existing test user denizdennasnas@gmail.com to match defaults.")
     except Exception as e:
         db.rollback()
         logger.error(f"SEED | Error seeding test user: {e}")
+    finally:
+        db.close()
+
+
+def seed_psychologists():
+    """Seeds default approved psychologists and cleans up orphaned or stale mock profiles."""
+    from src.services.auth import get_password_hash, verify_password
+    db = SessionLocal()
+    try:
+        default_psychologists = [
+            {
+                "username": "antepogullari",
+                "email": "antepogullari@gmail.com",
+                "full_name": "Betül Akarçay",
+                "title": "Doçent Psikolog",
+                "specialty": "Bilişsel Terapi",
+                "bio": "Merhaba, ben Doçent Psikolog Betül Akarçay. Bilişsel davranışçı terapi alanında uzmanım.",
+                "status": "approved"
+            },
+            {
+                "username": "ahmet_yilmaz",
+                "email": "ahmet_yilmaz@example.com",
+                "full_name": "Ahmet Yılmaz",
+                "title": "Uzm. Psk.",
+                "specialty": "Kaygı",
+                "bio": "Merhaba, ben Uzman Psikolog Ahmet Yılmaz. Kaygı bozuklukları ve panik atak üzerinde çalışıyorum.",
+                "status": "approved"
+            }
+        ]
+        
+        for psy_data in default_psychologists:
+            user = db.query(User).filter(User.username == psy_data["username"]).first()
+            hashed_pw = get_password_hash("password123")
+            if not user:
+                user = User(
+                    username=psy_data["username"],
+                    password_hash=hashed_pw,
+                    email=psy_data["email"],
+                    full_name=psy_data["full_name"],
+                    role="psychologist"
+                )
+                db.add(user)
+                db.flush()
+            else:
+                user.role = "psychologist"
+                user.full_name = psy_data["full_name"]
+                user.email = psy_data["email"]
+                if not verify_password("password123", user.password_hash):
+                    user.password_hash = hashed_pw
+            
+            profile = db.query(PsychologistProfile).filter(PsychologistProfile.user_id == user.id).first()
+            if not profile:
+                profile = PsychologistProfile(
+                    user_id=user.id,
+                    title=psy_data["title"],
+                    specialty=psy_data["specialty"],
+                    bio=psy_data["bio"],
+                    status=psy_data["status"]
+                )
+                db.add(profile)
+            else:
+                profile.title = psy_data["title"]
+                profile.specialty = psy_data["specialty"]
+                profile.bio = psy_data["bio"]
+                profile.status = psy_data["status"]
+        
+        # Clean up any psychologist profiles that don't belong to a psychologist user or are generated mock testusers
+        all_profiles = db.query(PsychologistProfile).all()
+        for p in all_profiles:
+            u = db.query(User).filter(User.id == p.user_id).first()
+            if not u or u.role != "psychologist" or "testuser_" in u.username.lower() or "patient_" in u.username.lower():
+                db.delete(p)
+                
+        db.commit()
+        logger.info("SEED | Seeded default psychologists and cleaned up orphaned/test profiles.")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"SEED | Error seeding psychologists: {e}")
     finally:
         db.close()
 

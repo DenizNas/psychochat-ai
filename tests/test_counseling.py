@@ -7,8 +7,8 @@ from src.response_engine.prompts import build_system_prompt, PROMPT_VERSION
 class TestCounselingPrompting(unittest.TestCase):
 
     def test_version_bump(self):
-        """Verify prompt version is bumped to v1.3.0."""
-        self.assertEqual(PROMPT_VERSION, "v1.3.0")
+        """Verify prompt version is bumped to v1.7.4 (Sprint 7.4)."""
+        self.assertEqual(PROMPT_VERSION, "v1.7.4")
 
     def test_categorize_input_keywords(self):
         """Verify keyword matching categorizes correctly with turkish_lower()."""
@@ -35,7 +35,8 @@ class TestCounselingPrompting(unittest.TestCase):
 
     def test_get_few_shot_examples(self):
         """Verify we retrieve exactly 2 unique examples when requested."""
-        examples = get_few_shot_examples("yalnızım", "sadness", num_examples=2)
+        # Use a longer text so the 3-word short-text guard doesn't suppress categorization
+        examples = get_few_shot_examples("Bugün kendimi çok yalnız hissediyorum.", "loneliness", num_examples=2)
         self.assertEqual(len(examples), 2)
         self.assertNotEqual(examples[0]["user"], examples[1]["user"])
 
@@ -49,13 +50,13 @@ class TestCounselingPrompting(unittest.TestCase):
             language="tr",
             emotion="sadness",
             risk="Normal",
-            text="Kendimi yalnız hissediyorum."
+            text="Bugün kendimi çok yalnız hissediyorum."
         )
 
         self.assertIn("response_style_rules", meta["prompt_sections"])
         self.assertIn("few_shot_examples", meta["prompt_sections"])
         self.assertEqual(meta["counseling_category"], "loneliness")
-        self.assertEqual(meta["prompt_version"], "v1.3.0")
+        self.assertEqual(meta["prompt_version"], "v1.7.4")
 
         self.assertIn("TEPKİ STİLİ VE İLETİŞİM İLKELERİ", prompt)
         self.assertIn("DANIŞAN-ASİSTAN YANIT ÖRNEKLERİ", prompt)
